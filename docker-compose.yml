@@ -2,7 +2,7 @@ version: '3.3'
 services:
     apt-web:
         restart: always
-        image: swiftlatex/apt
+        image: brizeium/texlive_ondemand:r1
         container_name: apt
         ports:
-            - 5000:5000
+            - 5000:5001
