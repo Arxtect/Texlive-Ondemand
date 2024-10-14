@@ -2,7 +2,8 @@ version: '3.3'
 services:
     apt-web:
         restart: always
-        image: brizeium/texlive_ondemand:r1
+        image: brizeium/texlive_ondemand:r2
+        # build: .
         container_name: apt
         ports:
             - 5000:5001

@@ -9,12 +9,40 @@ import re
 import os
 from cachetools import cached, LRUCache
 from io import BytesIO
+from typing import Dict
+
+
+class FileCacheEntry:
+    url: str
+    """对应的文件 URL"""
+    exists: bool
+    """文件是否存在的布尔值"""
+    file_data: bytes
+    """文件数据"""
+
+    def __init__(self, url: str, exists: bool, file_data: bytes):
+        """
+        初始化 FileCacheEntry 类的实例。
+
+        :param url: 对应的文件 URL
+        :param exists: 文件是否存在的布尔值
+        :param file_data: 文件数据
+        """
+        self.url = url
+        self.exists = exists
+        self.file_data = file_data
+
+    def __repr__(self):
+        return f"FileCacheEntry(url={self.url}, exists={self.exists})"
+
 
 app = Flask(__name__)
 
 regex = re.compile(r'[^a-zA-Z0-9 _\-\.]')
 
-cache = LRUCache(maxsize=3*10*1000)
+file_status_cache: Dict[str, FileCacheEntry] = {}
+
+file_data_cache = LRUCache(maxsize=3*10*1000)
 
 
 def san(name):
@@ -24,16 +52,18 @@ def read_file_data(file_path):
     with open(file_path, 'rb') as f:
         return f.read()
 
-@cached(cache)
+@cached(file_data_cache)
 def get_cached_file_data(file_path):
-    print(f"Cache miss: {file_path}")
+    print(f"File data cache miss: {file_path}")
     return read_file_data(file_path)
 
-def cached_send_file(url):
-    file_data = get_cached_file_data(url)
+def cached_send_file(url, file_data):
+    if file_data is None:
+        file_data = get_cached_file_data(url)
+    file_name = os.path.basename(url)
     file_stream = BytesIO(file_data)
-    file_stream.seek(0)
-    return send_file(url, mimetype='application/octet-stream')
+    return send_file(file_stream, download_name=file_name, mimetype='application/octet-stream')
+
 
 @app.route('/xetex/<int:fileformat>/<filename>')
 @cross_origin()
@@ -41,15 +71,30 @@ def xetex_fetch_file(fileformat, filename):
     try:
         filename = san(filename)
         url = None
-        if filename == "swiftlatexxetex.fmt" or filename == "xetexfontlist.txt":
-            url = filename
+        has_file = False
+        file_data = None
+        sta_cache_key = f"xetex+{fileformat}+{filename}"
+        sta_cached_entry = file_status_cache.get(sta_cache_key)
+        if sta_cached_entry:
+            url = sta_cached_entry.url
+            has_file = sta_cached_entry.exists
+            file_data = sta_cached_entry.file_data
         else:
-            url = pykpathsea_xetex.find_file(filename, fileformat)
+            if filename == "swiftlatexxetex.fmt" or filename == "xetexfontlist.txt":
+                url = filename
+            else:
+                url = pykpathsea_xetex.find_file(filename, fileformat)
+            if url is not None:
+                has_file = os.path.isfile(url)
+            if has_file:
+                file_data = get_cached_file_data(url)
+            file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
+            print(f"File status cache miss: {sta_cache_key}")
 
-        if url is None or not os.path.isfile(url):
+        if url is None or not has_file:            
             return "File not found", 301
         else:
-            response = make_response(cached_send_file(url))
+            response = make_response(cached_send_file(url, file_data))
             response.headers['fileid'] = os.path.basename(url)
             response.headers['Access-Control-Expose-Headers'] = 'fileid'
             return response
@@ -63,15 +108,30 @@ def pdftex_fetch_file(fileformat, filename):
     try:
         filename = san(filename)
         url = None
-        if filename == "swiftlatexpdftex.fmt":
-            url = filename
+        has_file = False
+        file_data = None
+        sta_cache_key = f"pdftex+{fileformat}+{filename}"
+        sta_cached_entry = file_status_cache.get(sta_cache_key)
+        if sta_cached_entry:
+            url = sta_cached_entry.url
+            has_file = sta_cached_entry.exists
+            file_data = sta_cached_entry.file_data
         else:
-            url = pykpathsea_pdftex.find_file(filename, fileformat)
+            if filename == "swiftlatexpdftex.fmt":
+                url = filename
+            else:
+                url = pykpathsea_pdftex.find_file(filename, fileformat)
+            if url is not None:
+                has_file = os.path.isfile(url)
+            if has_file:
+                file_data = get_cached_file_data(url)
+            file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
+            print(f"File status cache miss: {sta_cache_key}")
 
-        if url is None or not os.path.isfile(url):
+        if url is None or not has_file:
             return "File not found", 301
         else:
-            response = make_response(cached_send_file(url))
+            response = make_response(cached_send_file(url, file_data))
             response.headers['fileid'] = os.path.basename(url)
             response.headers['Access-Control-Expose-Headers'] = 'fileid'
             return response
@@ -84,13 +144,28 @@ def pdftex_fetch_file(fileformat, filename):
 def pdftex_fetch_pk(dpi, filename):
     try:
         filename = san(filename)
-        
-        url = pykpathsea_pdftex.find_pk(filename, dpi)
+        url = None
+        has_file = False
+        file_data = None
+        sta_cache_key = f"pdftex+pk+{dpi}+{filename}"
+        sta_cached_entry = file_status_cache.get(sta_cache_key)
+        if sta_cached_entry:
+            url = sta_cached_entry.url
+            has_file = sta_cached_entry.exists
+            file_data = sta_cached_entry.file_data
+        else:
+            url = pykpathsea_pdftex.find_pk(filename, dpi)
+            if url is not None:
+                has_file = os.path.isfile(url)
+            if has_file:
+                file_data = get_cached_file_data(url)
+            file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
+            print(f"File status cache miss: {sta_cache_key}")
 
-        if url is None or not os.path.isfile(url):
+        if url is None or not has_file:
             return "File not found", 301
         else:
-            response = make_response(cached_send_file(url))
+            response = make_response(cached_send_file(url, file_data))
             response.headers['pkid'] = os.path.basename(url)
             response.headers['Access-Control-Expose-Headers'] = 'pkid'
             return response
