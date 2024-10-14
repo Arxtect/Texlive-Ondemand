@@ -14,19 +14,19 @@ from typing import Dict
 
 class FileCacheEntry:
     url: str
-    """对应的文件 URL"""
+    """Corresponding file URL"""
     exists: bool
-    """文件是否存在的布尔值"""
+    """Boolean value indicating whether the file exists"""
     file_data: bytes
-    """文件数据"""
+    """File data"""
 
     def __init__(self, url: str, exists: bool, file_data: bytes):
         """
-        初始化 FileCacheEntry 类的实例。
+        Initializes an instance of the FileCacheEntry class.
 
-        :param url: 对应的文件 URL
-        :param exists: 文件是否存在的布尔值
-        :param file_data: 文件数据
+        :param url: The corresponding file URL
+        :param exists: Boolean value indicating whether the file exists
+        :param file_data: File data
         """
         self.url = url
         self.exists = exists
