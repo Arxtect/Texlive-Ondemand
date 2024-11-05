@@ -2,8 +2,9 @@ version: '3.3'
 services:
     apt-web:
         restart: always
-        image: brizeium/texlive_ondemand:r2
-        # build: .
+        # image: brizeium/texlive_ondemand:r3
+        build: .
         container_name: apt
         ports:
             - 5000:5001
+        command: python3 wsgi.py
