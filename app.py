@@ -36,14 +36,20 @@ class FileCacheEntry:
         return f"FileCacheEntry(url={self.url}, exists={self.exists})"
 
 
-app = Flask(__name__)
+resapp = Flask(__name__)
 
 regex = re.compile(r'[^a-zA-Z0-9 _\-\.]')
+
+useCache: bool = True
 
 file_status_cache: Dict[str, FileCacheEntry] = {}
 
 file_data_cache = LRUCache(maxsize=3*10*1000)
 
+
+def set_cache_enabled(enabled: bool):
+    global useCache
+    useCache = enabled
 
 def san(name):
     return regex.sub('', name)
@@ -64,8 +70,13 @@ def cached_send_file(url, file_data):
     file_stream = BytesIO(file_data)
     return send_file(file_stream, download_name=file_name, mimetype='application/octet-stream')
 
+def no_cache_send_file(url, file_data):
+    file_data = read_file_data(url)
+    file_name = os.path.basename(url)
+    file_stream = BytesIO(file_data)
+    return send_file(file_stream, download_name=file_name, mimetype='application/octet-stream')
 
-@app.route('/xetex/<int:fileformat>/<filename>')
+@resapp.route('/xetex/<int:fileformat>/<filename>')
 @cross_origin()
 def xetex_fetch_file(fileformat, filename):
     try:
@@ -74,7 +85,7 @@ def xetex_fetch_file(fileformat, filename):
         has_file = False
         file_data = None
         sta_cache_key = f"xetex+{fileformat}+{filename}"
-        sta_cached_entry = file_status_cache.get(sta_cache_key)
+        sta_cached_entry = file_status_cache.get(sta_cache_key) if useCache else None
         if sta_cached_entry:
             url = sta_cached_entry.url
             has_file = sta_cached_entry.exists
@@ -86,15 +97,16 @@ def xetex_fetch_file(fileformat, filename):
                 url = pykpathsea_xetex.find_file(filename, fileformat)
             if url is not None:
                 has_file = os.path.isfile(url)
-            if has_file:
-                file_data = get_cached_file_data(url)
-            file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
-            print(f"File status cache miss: {sta_cache_key}")
+            if useCache:
+                if has_file:
+                    file_data = get_cached_file_data(url)
+                file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
+                print(f"File status cache miss: {sta_cache_key}")
 
         if url is None or not has_file:            
             return "File not found", 301
         else:
-            response = make_response(cached_send_file(url, file_data))
+            response = make_response(cached_send_file(url, file_data) if useCache else no_cache_send_file(url, file_data))
             response.headers['fileid'] = os.path.basename(url)
             response.headers['Access-Control-Expose-Headers'] = 'fileid'
             return response
@@ -102,7 +114,7 @@ def xetex_fetch_file(fileformat, filename):
         print(f"Error in xetex_fetch_file: {e}")
         return "Internal Server Error", 500
 
-@app.route('/pdftex/<int:fileformat>/<filename>')
+@resapp.route('/pdftex/<int:fileformat>/<filename>')
 @cross_origin()
 def pdftex_fetch_file(fileformat, filename):
     try:
@@ -111,7 +123,7 @@ def pdftex_fetch_file(fileformat, filename):
         has_file = False
         file_data = None
         sta_cache_key = f"pdftex+{fileformat}+{filename}"
-        sta_cached_entry = file_status_cache.get(sta_cache_key)
+        sta_cached_entry = file_status_cache.get(sta_cache_key) if useCache else None
         if sta_cached_entry:
             url = sta_cached_entry.url
             has_file = sta_cached_entry.exists
@@ -123,15 +135,16 @@ def pdftex_fetch_file(fileformat, filename):
                 url = pykpathsea_pdftex.find_file(filename, fileformat)
             if url is not None:
                 has_file = os.path.isfile(url)
-            if has_file:
-                file_data = get_cached_file_data(url)
-            file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
-            print(f"File status cache miss: {sta_cache_key}")
+            if useCache:
+                if has_file:
+                    file_data = get_cached_file_data(url)
+                file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
+                print(f"File status cache miss: {sta_cache_key}")
 
         if url is None or not has_file:
             return "File not found", 301
         else:
-            response = make_response(cached_send_file(url, file_data))
+            response = make_response(cached_send_file(url, file_data) if useCache else no_cache_send_file(url, file_data))
             response.headers['fileid'] = os.path.basename(url)
             response.headers['Access-Control-Expose-Headers'] = 'fileid'
             return response
@@ -139,7 +152,7 @@ def pdftex_fetch_file(fileformat, filename):
         print(f"Error in pdftex_fetch_file: {e}")
         return "Internal Server Error", 500
 
-@app.route('/pdftex/pk/<int:dpi>/<filename>')
+@resapp.route('/pdftex/pk/<int:dpi>/<filename>')
 @cross_origin()
 def pdftex_fetch_pk(dpi, filename):
     try:
@@ -148,7 +161,7 @@ def pdftex_fetch_pk(dpi, filename):
         has_file = False
         file_data = None
         sta_cache_key = f"pdftex+pk+{dpi}+{filename}"
-        sta_cached_entry = file_status_cache.get(sta_cache_key)
+        sta_cached_entry = file_status_cache.get(sta_cache_key) if useCache else None
         if sta_cached_entry:
             url = sta_cached_entry.url
             has_file = sta_cached_entry.exists
@@ -157,15 +170,16 @@ def pdftex_fetch_pk(dpi, filename):
             url = pykpathsea_pdftex.find_pk(filename, dpi)
             if url is not None:
                 has_file = os.path.isfile(url)
-            if has_file:
-                file_data = get_cached_file_data(url)
-            file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
-            print(f"File status cache miss: {sta_cache_key}")
+            if useCache:
+                if has_file:
+                    file_data = get_cached_file_data(url)
+                file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
+                print(f"File status cache miss: {sta_cache_key}")
 
         if url is None or not has_file:
             return "File not found", 301
         else:
-            response = make_response(cached_send_file(url, file_data))
+            response = make_response(cached_send_file(url, file_data) if useCache else no_cache_send_file(url, file_data))
             response.headers['pkid'] = os.path.basename(url)
             response.headers['Access-Control-Expose-Headers'] = 'pkid'
             return response
