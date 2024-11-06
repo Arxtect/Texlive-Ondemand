@@ -44,7 +44,7 @@ useCache: bool = True
 
 file_status_cache: Dict[str, FileCacheEntry] = {}
 
-file_data_cache = LRUCache(maxsize=3*10*1000)
+file_data_cache = LRUCache(maxsize=3*1*1000)
 
 
 def set_cache_enabled(enabled: bool):
