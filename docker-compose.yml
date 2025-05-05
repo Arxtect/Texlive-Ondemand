@@ -6,5 +6,5 @@ services:
         build: .
         container_name: apt
         ports:
-            - 5000:5001
+            - 5001:5001
         command: python3 wsgi.py

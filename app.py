@@ -36,6 +36,21 @@ class FileCacheEntry:
         return f"FileCacheEntry(url={self.url}, exists={self.exists})"
 
 
+lookup_table = {}
+try:
+    with open('lookupTable.txt', 'r') as f:
+        for line in f:
+            line = line.strip()
+            if '@' in line:
+                parts = line.split('@', 1)
+                if len(parts) == 2:
+                    fname = parts[0].strip()
+                    path = parts[1].strip()
+                    if fname and path:
+                        lookup_table[fname] = path
+except Exception as e:
+    print(f"Error reading lookupTable.txt: {e}")
+
 resapp = Flask(__name__)
 
 regex = re.compile(r'[^a-zA-Z0-9 _\-\.]')
@@ -91,7 +106,9 @@ def xetex_fetch_file(fileformat, filename):
             has_file = sta_cached_entry.exists
             file_data = sta_cached_entry.file_data
         else:
-            if filename == "swiftlatexxetex.fmt" or filename == "xetexfontlist.txt":
+            if filename in lookup_table:
+                url = lookup_table[filename]
+            elif filename == "swiftlatexxetex.fmt" or filename == "xetexfontlist.txt":
                 url = filename
             else:
                 url = pykpathsea_xetex.find_file(filename, fileformat)

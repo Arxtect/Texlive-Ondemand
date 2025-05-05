@@ -2,5 +2,8 @@
 .pdf
 .dvi
 .o
+.vscode
+test
 build/
 __pycache__/
+myfont
