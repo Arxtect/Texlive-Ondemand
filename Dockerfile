@@ -9,7 +9,7 @@ RUN rm -rf /app/myfont /app/.git && \
 	# generate font package
 	apt list 'fonts-*' | grep 'fonts-' | grep -v fonts-ubuntu-classic | cut -d/ -f1 | tr '\n' ' ' > /tmp/font_packages.txt && \
 	# install packages and fonts
-	DEBIAN_FRONTEND=noninteractive echo 'yes' | apt install -y wget tar python3 python3-flask python3-gevent python3-cachetools python3-flask-cors python3-distutils-extra libkpathsea6 $(cat /tmp/font_packages.txt) ttf* && rm /tmp/font_packages.txt && \
+	DEBIAN_FRONTEND=noninteractive echo 'yes' | apt install -y ttf-* wget tar python3 python3-flask python3-gevent python3-cachetools python3-flask-cors python3-distutils-extra libkpathsea6 $(cat /tmp/font_packages.txt) ttf* && rm /tmp/font_packages.txt && \
 	# get texlive installer
 	wget --output-document /tmp/texlive.tar.gz "http://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz" && \
 	# install texlive
