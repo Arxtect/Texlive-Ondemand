@@ -22,6 +22,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Prepare custom font files
+        env:
+          MYFONT_S3_URL: ${{ secrets.MYFONT_S3_URL || 'https://example.com/myfont.tar' }} # Use secret or default
+        run: |
+          echo "Downloading custom fonts from ${{ env.MYFONT_S3_URL }}"
+          mkdir -p ./myfont
+          wget --no-check-certificate -O ./myfont/myfont.tar "${{ env.MYFONT_S3_URL }}"
+          echo "Extracting fonts..."
+          tar -xf ./myfont/myfont.tar -C ./myfont --strip-components=1
+          echo "Cleaning up downloaded tarball..."
+          rm ./myfont/myfont.tar
+          echo "Contents of ./myfont directory:"
+          ls -l ./myfont
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
