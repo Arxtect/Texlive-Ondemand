@@ -24,15 +24,15 @@ jobs:
 
       - name: Prepare custom font files
         env:
-          MYFONT_S3_URL: ${{ secrets.MYFONT_S3_URL || 'https://example.com/myfont.tar' }} # Use secret or default
+          MYFONT_S3_URL: ${{ secrets.MYFONT_S3_URL || 'https://arxtect-assets.oss-cn-hangzhou.aliyuncs.com/myfont.zip' }}
         run: |
+          sudo apt-get update && sudo apt-get install -y unzip
           echo "Downloading custom fonts from ${{ env.MYFONT_S3_URL }}"
           mkdir -p ./myfont
-          wget --no-check-certificate -O ./myfont/myfont.tar "${{ env.MYFONT_S3_URL }}"
+          wget --no-check-certificate -O ./myfont/myfont.zip "${{ env.MYFONT_S3_URL }}"
           echo "Extracting fonts..."
-          tar -xf ./myfont/myfont.tar -C ./myfont --strip-components=1
-          echo "Cleaning up downloaded tarball..."
-          rm ./myfont/myfont.tar
+          unzip -o ./myfont/myfont.zip -d ./myfont
+          rm ./myfont/myfont.zip
           echo "Contents of ./myfont directory:"
           ls -l ./myfont
 
