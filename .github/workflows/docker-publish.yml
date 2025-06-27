@@ -98,3 +98,8 @@ jobs:
 #        run: echo "Docker Tags: ${{ steps.meta.outputs.tags }}"
 #      - name: Echo Docker Metadata Labels
 #        run: echo "Docker Labels: ${{ steps.meta.outputs.labels }}"
+
+      - name: Display Docker image size
+        run: |
+          echo "Displaying size of the built image..."
+          docker images ${{ steps.meta.outputs.tags }}
