@@ -102,4 +102,4 @@ jobs:
       - name: Display Docker image size
         run: |
           echo "Displaying size of the built image..."
-          docker images ${{ steps.meta.outputs.tags }}
+          docker images 
