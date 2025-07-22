@@ -13,6 +13,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Debug checkout commit
+        run: |
+          echo "Branch or tag: ${{ github.ref }}"
+          git log -1 --oneline
+
       - name: Free Disk Space on Runner
         run: |
           echo "Initial disk space:"
@@ -69,7 +74,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: codedevin/texalive
+          images: brizeium/test
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
