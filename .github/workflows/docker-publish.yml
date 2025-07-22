@@ -18,6 +18,15 @@ jobs:
           echo "Branch or tag: ${{ github.ref }}"
           git log -1 --oneline
 
+      - name: Validate required secrets
+              run: |
+                if [ -z "${{ secrets.DOCKERHUB_REPOSITORY }}" ]; then
+                  echo "Error: DOCKERHUB_REPOSITORY secret is required"
+                  echo "Please configure this secret in your repository settings under Secrets and variables > Actions"
+                  exit 1
+                fi
+                echo "DOCKERHUB_REPOSITORY secret is configured"
+
       - name: Free Disk Space on Runner
         run: |
           echo "Initial disk space:"
