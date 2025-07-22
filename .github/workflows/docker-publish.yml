@@ -1,0 +1,113 @@
+name: Publish Docker image to Docker Hub
+
+on:
+  push:
+    tags:
+      - 'v*' # Push events to tags starting with v (e.g. v1.0, v20.15.10)
+  workflow_dispatch: # Allows manual triggering of the workflow
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display checkout commit
+        run: |
+          echo "Branch or tag: ${{ github.ref }}"
+          git log -1 --oneline
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.DOCKERHUB_REPOSITORY }}" ]; then
+            echo "Error: DOCKERHUB_REPOSITORY secret is required"
+            echo "Please configure this secret in your repository settings under Secrets and variables > Actions"
+            exit 1
+          fi
+
+      - name: Free Disk Space on Runner
+        run: |
+          echo "Initial disk space:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          # Add any other specific large directories or packages you know you don't need
+          # sudo apt-get purge -y --auto-remove <unneeded-package-1> <unneeded-package-2>
+          sudo apt-get autoremove -y
+          sudo apt-get clean -y
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Configure Docker to use /mnt for storage
+        run: |
+          echo "Configuring Docker to use /mnt for data..."
+          sudo mkdir -p /mnt/docker-data
+          echo '{
+            "data-root": "/mnt/docker-data"
+          }' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          echo "Docker daemon configuration:"
+          sudo cat /etc/docker/daemon.json
+          echo "Waiting for Docker to restart..."
+          sleep 5 # Give Docker a moment to restart
+          docker info # Verify the new data root
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Prepare custom font files
+        env:
+          MYFONT_S3_URL: ${{ secrets.MYFONT_S3_URL || 'https://arxtect-assets.oss-cn-hangzhou.aliyuncs.com/myfont.zip' }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y unzip
+          echo "Downloading custom fonts from ${{ env.MYFONT_S3_URL }}"
+          mkdir -p ./myfont
+          wget --no-check-certificate -O ./myfont/myfont.zip "${{ env.MYFONT_S3_URL }}"
+          echo "Extracting fonts..."
+          unzip -o ./myfont/myfont.zip -d ./myfont
+          rm ./myfont/myfont.zip
+          echo "Contents of ./myfont directory:"
+          ls -l ./myfont
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_REPOSITORY }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Ensure the tag from GitHub is used for the Docker image
+          # The metadata-action usually handles this well by default when a tag push triggers the workflow.
+          # For clarity, if we want to explicitly use the GitHub tag:
+          # tags: codedevin/texalive:${{ github.ref_name }}
+          # However, docker/metadata-action is more robust as it can generate multiple tags (e.g., latest, git tag)
+          # Let's verify the output of metadata-action. It should correctly use the git tag.
+          # If github.ref_name is like 'refs/tags/v1.0.0', we need to strip 'refs/tags/'.
+          # The metadata action handles this:
+          # type=ref,event=tag will produce the tag name.
+
+# Debug step to see what github.ref_name is (optional, can be removed)
+#      - name: Echo GitHub Ref
+#        run: echo "GitHub Ref Name: ${{ github.ref_name }}"
+
+# Debug step to see what tags metadata-action produces (optional)
+#      - name: Echo Docker Metadata Tags
+#        run: echo "Docker Tags: ${{ steps.meta.outputs.tags }}"
+#      - name: Echo Docker Metadata Labels
+#        run: echo "Docker Labels: ${{ steps.meta.outputs.labels }}"
