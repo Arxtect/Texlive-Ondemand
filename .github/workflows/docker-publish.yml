@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug checkout commit
+      - name: Display checkout commit
         run: |
           echo "Branch or tag: ${{ github.ref }}"
           git log -1 --oneline
@@ -104,7 +104,10 @@ jobs:
 #      - name: Echo Docker Metadata Labels
 #        run: echo "Docker Labels: ${{ steps.meta.outputs.labels }}"
 
-      - name: Display Docker image size
+      - name: Display built Docker image size
         run: |
-          echo "Displaying size of the built image..."
-          docker images 
+          echo "Showing image size for: ${{ steps.meta.outputs.tags }}"
+          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
+            echo "Inspecting $tag..."
+            docker image inspect "$tag" --format '{{.RepoTags}} => {{.Size}} bytes'
+          done
