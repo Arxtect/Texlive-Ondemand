@@ -13,23 +13,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate required DockerHub secrets
-        run: |
-          echo "Checking required DockerHub secrets..."
-          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ] || [ "${{ secrets.DOCKERHUB_USERNAME }}" = "" ]; then
-            echo "❌ Error: DOCKERHUB_USERNAME secret is not set or empty"
-            exit 1
-          fi
-          if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ] || [ "${{ secrets.DOCKERHUB_TOKEN }}" = "" ]; then
-            echo "❌ Error: DOCKERHUB_TOKEN secret is not set or empty"
-            exit 1
-          fi
-          if [ -z "${{ secrets.DOCKERHUB_REPOSITORY }}" ] || [ "${{ secrets.DOCKERHUB_REPOSITORY }}" = "" ]; then
-            echo "❌ Error: DOCKERHUB_REPOSITORY secret is not set or empty"
-            exit 1
-          fi
-          echo "✅ All required DockerHub secrets are properly configured"
-
       - name: Display checkout commit
         run: |
           echo "Branch or tag: ${{ github.ref }}"
@@ -120,45 +103,3 @@ jobs:
 #        run: echo "Docker Tags: ${{ steps.meta.outputs.tags }}"
 #      - name: Echo Docker Metadata Labels
 #        run: echo "Docker Labels: ${{ steps.meta.outputs.labels }}"
-
-      - name: Display built Docker image size
-        run: |
-          echo "Displaying Docker image size information..."
-          echo "Generated tags: ${{ steps.meta.outputs.tags }}"
-          
-          # Get all built image tags
-          TAGS="${{ steps.meta.outputs.tags }}"
-          
-          # Loop through each tag and display size information
-          echo "$TAGS" | tr ',' '\n' | while IFS= read -r tag; do
-            tag=$(echo "$tag" | xargs)  # Remove potential whitespace
-            if [ -n "$tag" ]; then
-              echo "================================================"
-              echo "🏷️  Image Tag: $tag"
-              # Display basic image information
-              if docker image inspect "$tag" >/dev/null 2>&1; then
-                # Get image size in bytes
-                SIZE_BYTES=$(docker image inspect "$tag" --format='{{.Size}}')
-                # Convert to human readable format
-                SIZE_HUMAN=$(numfmt --to=iec --suffix=B $SIZE_BYTES 2>/dev/null || echo "$SIZE_BYTES bytes")
-                # Get virtual size if available
-                VIRTUAL_SIZE=$(docker image inspect "$tag" --format='{{.VirtualSize}}' 2>/dev/null || echo "$SIZE_BYTES")
-                VIRTUAL_SIZE_HUMAN=$(numfmt --to=iec --suffix=B $VIRTUAL_SIZE 2>/dev/null || echo "$VIRTUAL_SIZE bytes")
-                
-                echo "📦 Image Size: $SIZE_HUMAN ($SIZE_BYTES bytes)"
-                echo "💿 Virtual Size: $VIRTUAL_SIZE_HUMAN ($VIRTUAL_SIZE bytes)"
-                
-                # Display layer information
-                echo "📋 Image Layers:"
-                docker history "$tag" --format "table {{.CreatedBy}}\t{{.Size}}" --no-trunc=false | head -10
-              else
-                echo "❌ Failed to inspect image $tag"
-              fi
-              echo "================================================"
-            fi
-          done
-          
-          # Display summary of all local images
-          echo ""
-          echo "📊 Local Docker images summary:"
-          docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "${{ secrets.DOCKERHUB_REPOSITORY }}" || echo "No matching images found"
