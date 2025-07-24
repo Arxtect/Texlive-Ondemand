@@ -73,7 +73,7 @@ jobs:
           mkdir -p ./myfont
           wget --no-check-certificate -O ./myfont/myfont.zip "${{ env.MYFONT_S3_URL }}"
           echo "Extracting fonts..."
-          unzip -o ./myfont/myfont.zip -d ./myfont
+          unzip -o -j ./myfont/myfont.zip -d ./myfont
           rm ./myfont/myfont.zip
           echo "Contents of ./myfont directory:"
           ls -l ./myfont
