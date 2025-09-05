@@ -7,4 +7,7 @@ services:
         container_name: apt
         ports:
             - 5001:5001
+        volumes:
+            - ./swiftlatexpdftex.fmt:/app/swiftlatexpdftex.fmt
+            - ./swiftlatexxetex.fmt:/app/swiftlatexxetex.fmt
         command: python3 wsgi.py
