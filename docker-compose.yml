@@ -8,6 +8,7 @@ services:
         ports:
             - 5001:5001
         volumes:
-            - ./swiftlatexpdftex.fmt:/app/swiftlatexpdftex.fmt
-            - ./swiftlatexxetex.fmt:/app/swiftlatexxetex.fmt
+            - ./swiftlatexpdftex.fmt:/app/swiftlatexpdftex.fmt:ro
+            - ./swiftlatexxetex.fmt:/app/swiftlatexxetex.fmt:ro
+            - ./public:/app/public:ro
         command: python3 wsgi.py
