@@ -35,6 +35,22 @@ class FileCacheEntry:
     def __repr__(self):
         return f"FileCacheEntry(url={self.url}, exists={self.exists})"
 
+class ThreadSafeLRUCache:
+    def __init__(self, cache):
+        self._cache = cache
+        self._lock = Lock()
+
+    def get(self, key, default=None):
+        with self._lock:
+            return self._cache.get(key, default)
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            self._cache[key] = value
+
+    def __repr__(self):
+        with self._lock:
+            return repr(self._cache)
 
 lookup_table = {}
 try:
@@ -57,10 +73,12 @@ regex = re.compile(r'[^a-zA-Z0-9 _\-\.]')
 
 useCache: bool = True
 
-file_status_cache: Dict[str, FileCacheEntry] = {}
+file_status_cache = ThreadSafeLRUCache(LRUCache(maxsize=3*1*1000))
 
 file_data_cache = LRUCache(maxsize=3*1*1000)
+file_data_cache_lock = Lock()
 
+static_base_dir = os.path.realpath(os.path.abspath(os.path.join(os.path.dirname(__file__), 'public')))
 
 def set_cache_enabled(enabled: bool):
     global useCache
@@ -73,7 +91,7 @@ def read_file_data(file_path):
     with open(file_path, 'rb') as f:
         return f.read()
 
-@cached(file_data_cache)
+@cached(file_data_cache, lock=file_data_cache_lock)
 def get_cached_file_data(file_path):
     print(f"File data cache miss: {file_path}")
     return read_file_data(file_path)
@@ -204,3 +222,50 @@ def pdftex_fetch_pk(dpi, filename):
         print(f"Error in pdftex_fetch_pk: {e}")
         return "Internal Server Error", 500
 
+
+@resapp.route('/static/<category>/<filename>')
+@cross_origin()
+def static_fetch_file(category, filename):
+    try:
+        safe_category = san(category)
+        safe_filename = san(filename)
+        url = None
+        has_file = False
+        file_data = None
+        sta_cache_key = f"static+{safe_category}+{safe_filename}"
+        sta_cached_entry = file_status_cache.get(sta_cache_key) if useCache else None
+        if sta_cached_entry:
+            url = sta_cached_entry.url
+            has_file = sta_cached_entry.exists
+            file_data = sta_cached_entry.file_data
+        else:
+            if not safe_category or not safe_filename:
+                return "File not found", 404
+            if safe_category != category or safe_filename != filename:
+                return "File not found", 404
+            file_path = os.path.realpath(os.path.join(static_base_dir, safe_category, safe_filename))
+            try:
+                if os.path.commonpath([static_base_dir, file_path]) != static_base_dir:
+                    return "File not found", 404
+            except ValueError:
+                return "File not found", 404
+        
+            url = file_path
+            if url is not None:
+                has_file = os.path.isfile(url)
+            if useCache:
+                if has_file:
+                    file_data = get_cached_file_data(url)
+                file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
+                print(f"File status cache miss: {sta_cache_key}")
+
+        if url is None or not has_file:
+            return "File not found", 301
+        else:
+            response = make_response(cached_send_file(url, file_data) if useCache else no_cache_send_file(url, file_data))
+            response.headers['fileid'] = os.path.basename(url)
+            response.headers['Access-Control-Expose-Headers'] = 'fileid'
+            return response
+    except Exception as e:
+        print(f"Error in static_fetch_file: {e}")
+        return "Internal Server Error", 500

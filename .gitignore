@@ -7,3 +7,5 @@ test
 build/
 __pycache__/
 myfont
+.venv
+get-pip.py
