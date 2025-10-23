@@ -9,7 +9,7 @@ var Module = {};
 self.memlog = "";
 self.mainfile = "main.tex";
 self.texlive_endpoint =
-  "https://latex.arxtect.cn/latex4/arxtect_version_20250626/";
+  "https://www.arxtect.cn/latex3/arxtect_version_20250626/";
 self.ctan_mirror = "https://mirrors.ustc.edu.cn/CTAN/";
 Module["print"] = function (a) {
   self.memlog += a + "\n";
@@ -307,7 +307,7 @@ function initRuntime() {
   wasmExports["F"]();
   FS.ignorePermissions = false;
 }
-function preMain() { }
+function preMain() {}
 function postRun() {
   if (Module["postRun"]) {
     if (typeof Module["postRun"] == "function")
@@ -349,8 +349,7 @@ function abort(what) {
 }
 var wasmBinaryFile;
 function findWasmBinary() {
-  var url = self.texlive_endpoint + "static/engine/" + "swiftlatexdvipdfm.wasm";
-  return url;
+  return locateFile("swiftlatexdvipdfm.wasm");
 }
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {
@@ -366,7 +365,7 @@ async function getWasmBinary(binaryFile) {
     try {
       var response = await readAsync(binaryFile);
       return new Uint8Array(response);
-    } catch { }
+    } catch {}
   }
   return getBinarySync(binaryFile);
 }
@@ -487,11 +486,11 @@ var UTF8ToString = (ptr, maxBytesToRead) =>
 var ___assert_fail = (condition, filename, line, func) =>
   abort(
     `Assertion failed: ${UTF8ToString(condition)}, at: ` +
-    [
-      filename ? UTF8ToString(filename) : "unknown filename",
-      line,
-      func ? UTF8ToString(func) : "unknown function",
-    ]
+      [
+        filename ? UTF8ToString(filename) : "unknown filename",
+        line,
+        func ? UTF8ToString(func) : "unknown function",
+      ]
   );
 var syscallGetVarargI = () => {
   var ret = HEAP32[+SYSCALLS.varargs >> 2];
@@ -692,8 +691,8 @@ var FS_stdin_getChar = () => {
 };
 var TTY = {
   ttys: [],
-  init() { },
-  shutdown() { },
+  init() {},
+  shutdown() {},
   register(dev, ops) {
     TTY.ttys[dev] = { input: [], output: [], ops };
     FS.registerDevice(dev, TTY.stream_ops);
@@ -972,7 +971,7 @@ var MEMFS = {
       var new_node;
       try {
         new_node = FS.lookupNode(new_dir, new_name);
-      } catch (e) { }
+      } catch (e) {}
       if (new_node) {
         if (FS.isDir(old_node.mode)) {
           for (var i in new_node.contents) {
@@ -988,7 +987,7 @@ var MEMFS = {
         new_dir.mtime =
         old_node.parent.ctime =
         old_node.parent.mtime =
-        Date.now();
+          Date.now();
     },
     unlink(parent, name) {
       delete parent.contents[name];
@@ -1463,7 +1462,7 @@ var FS = {
     try {
       var node = FS.lookupNode(dir, name);
       return 20;
-    } catch (e) { }
+    } catch (e) {}
     return FS.nodePermissions(dir, "wx");
   },
   mayDelete(dir, name, isdir) {
@@ -1789,7 +1788,7 @@ var FS = {
     var new_node;
     try {
       new_node = FS.lookupNode(new_dir, new_name);
-    } catch (e) { }
+    } catch (e) {}
     if (old_node === new_node) {
       return;
     }
@@ -2382,7 +2381,7 @@ var FS = {
     try {
       var lookup = FS.lookupPath(path, { follow: !dontResolveLastLink });
       path = lookup.path;
-    } catch (e) { }
+    } catch (e) {}
     var ret = {
       isRoot: false,
       exists: false,
@@ -2420,7 +2419,7 @@ var FS = {
       var current = PATH.join2(parent, part);
       try {
         FS.mkdir(current);
-      } catch (e) { }
+      } catch (e) {}
       parent = current;
     }
     return current;
@@ -3112,7 +3111,7 @@ var growMemory = (size) => {
     wasmMemory.grow(pages);
     updateMemoryViews();
     return 1;
-  } catch (e) { }
+  } catch (e) {}
 };
 var _emscripten_resize_heap = (requestedSize) => {
   var oldSize = HEAPU8.length;
