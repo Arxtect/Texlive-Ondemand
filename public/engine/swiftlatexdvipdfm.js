@@ -349,7 +349,8 @@ function abort(what) {
 }
 var wasmBinaryFile;
 function findWasmBinary() {
-  return locateFile("swiftlatexdvipdfm.wasm");
+  var url = self.texlive_endpoint + "static/engine/" + "swiftlatexdvipdfm.wasm";
+  return url;
 }
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {

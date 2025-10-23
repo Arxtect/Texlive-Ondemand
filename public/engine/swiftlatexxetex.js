@@ -441,7 +441,8 @@ function abort(what) {
 }
 var wasmBinaryFile;
 function findWasmBinary() {
-  return locateFile("swiftlatexxetex.wasm");
+  var url = self.texlive_endpoint + "static/engine/" + "swiftlatexxetex.wasm";
+  return url;
 }
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {
