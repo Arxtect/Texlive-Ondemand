@@ -9,7 +9,7 @@ import re
 import os
 from cachetools import cached, LRUCache
 from io import BytesIO
-from typing import Dict
+from typing import Dict, Optional
 
 
 class FileCacheEntry:
@@ -79,6 +79,33 @@ file_data_cache = LRUCache(maxsize=3*1*1000)
 file_data_cache_lock = Lock()
 
 static_base_dir = os.path.realpath(os.path.abspath(os.path.join(os.path.dirname(__file__), 'public')))
+engine_base_dir = os.path.join(static_base_dir, "engine")
+
+ENGINE_TEXLIVE_OVERRIDE_FILES = {
+    "swiftlatexxetex.js",
+    "swiftlatexpdftex.js",
+    "swiftlatexdvipdfm.js",
+}
+TEXLIVE_ENDPOINT_ENV_VAR = "TEXLIVE_ENDPOINT"
+TEXLIVE_ENDPOINT_PATTERN = re.compile(
+    r'(self\.texlive_endpoint\s*=\s*)(\s*)(["\'])(.*?)(\3)(\s*);',
+    re.DOTALL,
+)
+
+def _ensure_trailing_slash(url: str) -> str:
+    return url if url.endswith("/") else url + "/"
+
+def _get_configured_texlive_endpoint() -> Optional[str]:
+    configured = os.environ.get(TEXLIVE_ENDPOINT_ENV_VAR)
+    if not configured:
+        return None
+    return _ensure_trailing_slash(configured)
+
+configured_texlive_endpoint = _get_configured_texlive_endpoint()
+if configured_texlive_endpoint:
+    print(f"Using texlive endpoint: {configured_texlive_endpoint}")
+else:
+    print("TEXLIVE_ENDPOINT not set")
 
 def set_cache_enabled(enabled: bool):
     global useCache
@@ -104,10 +131,36 @@ def cached_send_file(url, file_data):
     return send_file(file_stream, download_name=file_name, mimetype='application/octet-stream')
 
 def no_cache_send_file(url, file_data):
-    file_data = read_file_data(url)
+    if file_data is None:
+        file_data = read_file_data(url)
     file_name = os.path.basename(url)
     file_stream = BytesIO(file_data)
     return send_file(file_stream, download_name=file_name, mimetype='application/octet-stream')
+
+def _is_engine_js(file_path: str) -> bool:
+    try:
+        real_path = os.path.realpath(file_path)
+        if os.path.commonpath([engine_base_dir, real_path]) != engine_base_dir:
+            return False
+        return os.path.basename(real_path) in ENGINE_TEXLIVE_OVERRIDE_FILES
+    except (ValueError, FileNotFoundError, OSError):
+        return False
+
+def _apply_texlive_endpoint_override(file_path: str, content: bytes) -> bytes:
+    if configured_texlive_endpoint is None or content is None or not _is_engine_js(file_path):
+        return content
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return content
+    def _replace(match: re.Match) -> str:
+        prefix, spacing, quote_char, _current_value, trailing_spacing = match.group(1, 2, 3, 4, 6)
+        return f"{prefix}{spacing}{quote_char}{configured_texlive_endpoint}{quote_char}{trailing_spacing};"
+
+    updated, count = TEXLIVE_ENDPOINT_PATTERN.subn(_replace, text, count=1)
+    if count == 0:
+        return content
+    return updated.encode("utf-8")
 
 @resapp.route('/xetex/<int:fileformat>/<filename>')
 @cross_origin()
@@ -256,13 +309,19 @@ def static_fetch_file(category, filename):
             if useCache:
                 if has_file:
                     file_data = get_cached_file_data(url)
+                    file_data = _apply_texlive_endpoint_override(url, file_data)
                 file_status_cache[sta_cache_key] = FileCacheEntry(url, has_file, file_data)
                 print(f"File status cache miss: {sta_cache_key}")
 
         if url is None or not has_file:
             return "File not found", 301
         else:
-            response = make_response(cached_send_file(url, file_data) if useCache else no_cache_send_file(url, file_data))
+            if useCache:
+                response = make_response(cached_send_file(url, file_data))
+            else:
+                file_data_to_send = read_file_data(url)
+                file_data_to_send = _apply_texlive_endpoint_override(url, file_data_to_send)
+                response = make_response(no_cache_send_file(url, file_data_to_send))
             response.headers['fileid'] = os.path.basename(url)
             response.headers['Access-Control-Expose-Headers'] = 'fileid'
             return response
