@@ -8,7 +8,7 @@ services:
         ports:
             - 5001:5001
         environment:
-            TEXLIVE_ENDPOINT: ${TEXLIVE_ENDPOINT:-https://latex.arxtect.cn/latex4/arxtect_version_20250626/}
+            TEXLIVE_ENDPOINT: ${TEXLIVE_ENDPOINT:-https://latex.arxtect.cn/latex4/arxtect_version_20251024/}
         volumes:
             - ./swiftlatexpdftex.fmt:/app/swiftlatexpdftex.fmt:ro
             - ./swiftlatexxetex.fmt:/app/swiftlatexxetex.fmt:ro
