@@ -2,15 +2,16 @@ version: '3.3'
 services:
     apt-web:
         restart: always
-        # image: brizeium/texlive_ondemand:v0.5.2-arxtect-20251024
-        build: .
+        image: brizeium/texlive_ondemand:v0.5.2-arxtect-20251024
+        # build: .
         container_name: apt
         ports:
             - 5001:5001
         environment:
-            TEXLIVE_ENDPOINT: ${TEXLIVE_ENDPOINT:-https://latex.arxtect.cn/latex4/arxtect_version_20251024/}
+            TEXLIVE_ENDPOINT: ${TEXLIVE_ENDPOINT:-https://latex.arxtect.cn/latex4/arxtect_version_20251029/}
         volumes:
             - ./swiftlatexpdftex.fmt:/app/swiftlatexpdftex.fmt:ro
             - ./swiftlatexxetex.fmt:/app/swiftlatexxetex.fmt:ro
             - ./public:/app/public:ro
+            - ./app.py:/app/app.py:ro
         command: python3 wsgi.py

@@ -91,6 +91,15 @@ TEXLIVE_ENDPOINT_PATTERN = re.compile(
     r'(self\.texlive_endpoint\s*=\s*)(\s*)(["\'])(.*?)(\3)(\s*);',
     re.DOTALL,
 )
+TEX_WASM_BINARY_PATTERN = re.compile(
+    r'(function\s+findWasmBinary\s*\(\s*\)\s*\{)'
+    r'(\s*)'
+    r'(return\s+locateFile\s*\(\s*)'
+    r'(["\'])([^"\']+\.wasm)(\4)'
+    r'(\s*\)\s*;)'
+    r'(\s*\})',
+    re.DOTALL,
+)
 
 def _ensure_trailing_slash(url: str) -> str:
     return url if url.endswith("/") else url + "/"
@@ -106,6 +115,7 @@ if configured_texlive_endpoint:
     print(f"Using texlive endpoint: {configured_texlive_endpoint}")
 else:
     print("TEXLIVE_ENDPOINT not set")
+
 
 def set_cache_enabled(enabled: bool):
     global useCache
@@ -153,14 +163,39 @@ def _apply_texlive_endpoint_override(file_path: str, content: bytes) -> bytes:
         text = content.decode("utf-8")
     except UnicodeDecodeError:
         return content
-    def _replace(match: re.Match) -> str:
+    modified = False    
+    def _replace_endpoint(match: re.Match) -> str:
         prefix, spacing, quote_char, _current_value, trailing_spacing = match.group(1, 2, 3, 4, 6)
         return f"{prefix}{spacing}{quote_char}{configured_texlive_endpoint}{quote_char}{trailing_spacing};"
 
-    updated, count = TEXLIVE_ENDPOINT_PATTERN.subn(_replace, text, count=1)
-    if count == 0:
+    updated, count = TEXLIVE_ENDPOINT_PATTERN.subn(_replace_endpoint, text, count=1)
+    if count > 0:
+        modified = True
+        text = updated
+
+    def _replace_wasm_binary(match: re.Match) -> str:
+        func_start = match.group(1)
+        spacing1 = match.group(2)
+        quote_char = match.group(4)
+        wasm_filename = match.group(5)
+        func_end = match.group(8)        
+        new_body = (
+            f'{func_start}\n'
+            f'  var url = self.texlive_endpoint + "static/engine/" + {quote_char}{wasm_filename}{quote_char};\n'
+            f'  return url;\n'
+            f'{func_end}'
+        )
+        return new_body
+
+    updated, count = TEX_WASM_BINARY_PATTERN.subn(_replace_wasm_binary, text)
+    if count > 0:
+        modified = True
+        text = updated
+
+    if not modified:
         return content
-    return updated.encode("utf-8")
+    return text.encode("utf-8")
+
 
 @resapp.route('/xetex/<int:fileformat>/<filename>')
 @cross_origin()

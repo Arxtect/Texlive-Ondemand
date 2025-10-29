@@ -9,7 +9,7 @@ var Module = {};
 self.memlog = "";
 self.mainfile = "main.tex";
 self.texlive_endpoint =
-  "https://www.arxtect.cn/latex3/arxtect_version_20250626/";
+  "https://latex.arxtect.cn/latex4/arxtect_version_20251024/";
 self.ctan_mirror = "https://mirrors.ustc.edu.cn/CTAN/";
 Module["print"] = function (a) {
   self.memlog += a + "\n";
@@ -23,6 +23,14 @@ Module["preRun"] = function () {
   FS.mkdir(TEXCACHEROOT);
   FS.mkdir(TEXPKGCACHEROOT);
   FS.mkdir(WORKROOT);
+};
+Module["locateFile"] = function (path, scriptDirectory) {
+  if (path.endsWith(".wasm")) {
+    var url = self.texlive_endpoint + "static/engine" + path;
+    return url;
+  } else {
+    return scriptDirectory + path;
+  }
 };
 function _allocate(content) {
   let res = _malloc(content.length);
@@ -127,7 +135,12 @@ function compilePDFRoutine() {
 }
 function mkdirRoutine(dirname) {
   try {
-    FS.mkdir(WORKROOT + "/" + dirname);
+    const targetDir = WORKROOT + "/" + dirname;
+    if (FS.analyzePath(targetDir).exists) {
+      self.postMessage({ result: "ok", cmd: "mkdir" });
+      return;
+    }
+    FS.mkdir(targetDir);
     self.postMessage({ result: "ok", cmd: "mkdir" });
   } catch (err) {
     console.error("Not able to mkdir " + dirname);
@@ -349,8 +362,7 @@ function abort(what) {
 }
 var wasmBinaryFile;
 function findWasmBinary() {
-  var url = self.texlive_endpoint + "static/engine/" + "swiftlatexdvipdfm.wasm";
-  return url;
+  return locateFile("swiftlatexdvipdfm.wasm");
 }
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {
