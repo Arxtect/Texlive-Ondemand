@@ -26,7 +26,7 @@ Module["preRun"] = function () {
 };
 Module["locateFile"] = function (path, scriptDirectory) {
   if (path.endsWith(".wasm")) {
-    var url = self.texlive_endpoint + "static/engine" + path;
+    var url = self.texlive_endpoint + "static/engine/" + path;
     return url;
   } else {
     return scriptDirectory + path;
