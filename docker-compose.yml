@@ -2,7 +2,7 @@ version: '3.3'
 services:
     apt-web:
         restart: always
-        image: brizeium/texlive_ondemand:v0.5.2-arxtect-20251024
+        image: brizeium/texlive_ondemand:r5
         # build: .
         container_name: apt
         ports:

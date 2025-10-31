@@ -35,7 +35,7 @@ FROM texlive-base AS system-fonts
 RUN apt-get update && \
     apt list 'fonts-*' | grep 'fonts-' | grep -v fonts-ubuntu-classic | \
         cut -d/ -f1 | tr '\n' ' ' > /tmp/font_packages.txt && \
-    DEBIAN_FRONTEND=noninteractive apt install -y \
+    DEBIAN_FRONTEND=noninteractive echo 'yes' | apt install -y \
         ttf-* $(cat /tmp/font_packages.txt) ttf* && \
     rm /tmp/font_packages.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
