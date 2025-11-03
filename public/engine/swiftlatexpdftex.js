@@ -31,14 +31,6 @@ Module["preRun"] = function () {
   FS.mkdir(TEXPKGCACHEROOT);
   FS.mkdir(WORKROOT);
 };
-Module["locateFile"] = function (path, scriptDirectory) {
-  if (path.endsWith(".wasm")) {
-    var url = self.texlive_endpoint + "static/engine/" + path;
-    return url;
-  } else {
-    return scriptDirectory + path;
-  }
-};
 function _allocate(content) {
   let res = _malloc(content.length);
   HEAPU8.set(new Uint8Array(content), res);
