@@ -13,9 +13,19 @@ self.texlive_endpoint =
   "https://latex.arxtect.cn/latex4/arxtect_version_20251024/";
 self.ctan_mirror = "https://mirrors.ustc.edu.cn/CTAN/";
 Module["print"] = function (a) {
+  if (
+    a.includes("Package epstopdf Warning: Shell escape feature is not enabled")
+  ) {
+    return;
+  }
   self.memlog += a + "\n";
 };
 Module["printErr"] = function (a) {
+  if (
+    a.includes("Package epstopdf Warning: Shell escape feature is not enabled")
+  ) {
+    return;
+  }
   self.memlog += a + "\n";
   console.log(a);
 };
@@ -3764,23 +3774,23 @@ MEMFS.doesNotExistError.stack = "<generic error, no stack>";
 var wasmImports = {
   g: ___assert_fail,
   o: ___cxa_begin_catch,
-  r: ___cxa_end_catch,
+  q: ___cxa_end_catch,
   a: ___cxa_find_matching_catch_2,
   h: ___cxa_find_matching_catch_3,
-  M: ___cxa_rethrow,
+  L: ___cxa_rethrow,
   n: ___cxa_throw,
   O: ___cxa_uncaught_exceptions,
   d: ___resumeException,
   ga: ___syscall_chdir,
   ha: ___syscall_faccessat,
-  v: ___syscall_fcntl64,
+  u: ___syscall_fcntl64,
   ea: ___syscall_fstat64,
   aa: ___syscall_getcwd,
   V: ___syscall_getdents64,
   fa: ___syscall_ioctl,
   ba: ___syscall_lstat64,
   ca: ___syscall_newfstatat,
-  J: ___syscall_openat,
+  I: ___syscall_openat,
   S: ___syscall_renameat,
   T: ___syscall_rmdir,
   da: ___syscall_stat64,
@@ -3791,41 +3801,41 @@ var wasmImports = {
   W: __mmap_js,
   X: __munmap_js,
   ja: __tzset_js,
-  K: _emscripten_date_now,
+  J: _emscripten_date_now,
   R: _emscripten_resize_heap,
   _: _environ_get,
   $: _environ_sizes_get,
-  q: _exit,
-  y: _fd_close,
-  I: _fd_read,
+  N: _exit,
+  x: _fd_close,
+  H: _fd_read,
   Z: _fd_seek,
-  D: _fd_write,
-  F: invoke_diii,
-  w: invoke_fi,
-  G: invoke_fiii,
+  C: _fd_write,
+  E: invoke_diii,
+  v: invoke_fi,
+  F: invoke_fiii,
   p: invoke_i,
   b: invoke_ii,
   c: invoke_iii,
   l: invoke_iiii,
-  L: invoke_iiiifi,
+  K: invoke_iiiifi,
   f: invoke_iiiii,
   i: invoke_iiiiii,
-  s: invoke_iiiiiii,
-  H: invoke_iiiiiiii,
-  B: invoke_iiiiiiiiiiii,
-  N: invoke_jii,
-  C: invoke_jiiii,
+  r: invoke_iiiiiii,
+  G: invoke_iiiiiiii,
+  A: invoke_iiiiiiiiiiii,
+  M: invoke_jii,
+  B: invoke_jiiii,
   j: invoke_v,
   m: invoke_vi,
   e: invoke_vii,
   k: invoke_viii,
-  t: invoke_viiii,
+  s: invoke_viiii,
   P: invoke_viiiii,
-  z: invoke_viiiiii,
-  u: invoke_viiiiiii,
-  x: invoke_viiiiiiiiii,
-  A: invoke_viiiiiiiiiiiiiii,
-  E: _kpse_find_file_js,
+  y: invoke_viiiiii,
+  t: invoke_viiiiiii,
+  w: invoke_viiiiiiiiii,
+  z: invoke_viiiiiiiiiiiiiii,
+  D: _kpse_find_file_js,
 };
 var wasmExports;
 createWasm();

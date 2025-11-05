@@ -20,9 +20,19 @@ self.texlive_endpoint =
   "https://latex.arxtect.cn/latex4/arxtect_version_20251024/";
 self.ctan_mirror = "https://mirrors.ustc.edu.cn/CTAN/";
 Module["print"] = function (a) {
+  if (
+    a.includes("Package epstopdf Warning: Shell escape feature is not enabled")
+  ) {
+    return;
+  }
   self.memlog += a + "\n";
 };
 Module["printErr"] = function (a) {
+  if (
+    a.includes("Package epstopdf Warning: Shell escape feature is not enabled")
+  ) {
+    return;
+  }
   self.memlog += a + "\n";
   console.log(a);
 };
@@ -3890,11 +3900,11 @@ var wasmImports = {
   Q: _emscripten_resize_heap,
   Y: _environ_get,
   Z: _environ_sizes_get,
-  y: _exit,
+  D: _exit,
   x: _fd_close,
   L: _fd_read,
   X: _fd_seek,
-  D: _fd_write,
+  C: _fd_write,
   F: invoke_diii,
   v: invoke_fi,
   G: invoke_fiii,
@@ -3906,19 +3916,19 @@ var wasmImports = {
   j: invoke_iiiiii,
   u: invoke_iiiiiii,
   H: invoke_iiiiiiii,
-  B: invoke_iiiiiiiiiiii,
+  A: invoke_iiiiiiiiiiii,
   M: invoke_jii,
-  C: invoke_jiiii,
+  B: invoke_jiiii,
   k: invoke_v,
   g: invoke_vi,
   c: invoke_vii,
   l: invoke_viii,
   q: invoke_viiii,
   O: invoke_viiiii,
-  z: invoke_viiiiii,
+  y: invoke_viiiiii,
   r: invoke_viiiiiii,
   w: invoke_viiiiiiiiii,
-  A: invoke_viiiiiiiiiiiiiii,
+  z: invoke_viiiiiiiiiiiiiii,
   E: _kpse_find_file_js,
   ha: _kpse_find_pk_js,
 };
