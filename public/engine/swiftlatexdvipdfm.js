@@ -9,7 +9,7 @@ var Module = {};
 self.memlog = "";
 self.mainfile = "main.tex";
 self.texlive_endpoint =
-  "https://latex.arxtect.cn/latex4/arxtect_version_20251024/";
+  "https://latex.arxtect.cn/latex4/arxtect_version_20251104/";
 self.ctan_mirror = "https://mirrors.ustc.edu.cn/CTAN/";
 Module["print"] = function (a) {
   self.memlog += a + "\n";
