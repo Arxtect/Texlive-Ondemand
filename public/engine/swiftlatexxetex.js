@@ -3,7 +3,6 @@ var Module = typeof Module != "undefined" ? Module : {};
 var ENVIRONMENT_IS_WEB = true;
 var ENVIRONMENT_IS_WORKER = false;
 const TEXCACHEROOT = "/tex";
-const TEXPKGCACHEROOT = "/tex/pkg";
 const WORKROOT = "/work";
 var Module = {};
 self.memlog = "";
@@ -28,11 +27,6 @@ Module["printErr"] = function (a) {
   }
   self.memlog += a + "\n";
   console.log(a);
-};
-Module["preRun"] = function () {
-  FS.mkdir(TEXCACHEROOT);
-  FS.mkdir(TEXPKGCACHEROOT);
-  FS.mkdir(WORKROOT);
 };
 function _allocate(content) {
   let res = _malloc(content.length);
