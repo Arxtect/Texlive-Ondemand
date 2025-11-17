@@ -3,6 +3,7 @@ var Module = typeof Module != "undefined" ? Module : {};
 var ENVIRONMENT_IS_WEB = true;
 var ENVIRONMENT_IS_WORKER = false;
 const TEXCACHEROOT = "/tex";
+const TEXPKGCACHEROOT = "/tex/pkg";
 const WORKROOT = "/work";
 var Module = {};
 self.memlog = "";
@@ -27,6 +28,11 @@ Module["printErr"] = function (a) {
   }
   self.memlog += a + "\n";
   console.log(a);
+};
+Module["preRun"] = function () {
+  FS.mkdir(TEXCACHEROOT);
+  FS.mkdir(TEXPKGCACHEROOT);
+  FS.mkdir(WORKROOT);
 };
 function _allocate(content) {
   let res = _malloc(content.length);
@@ -119,7 +125,7 @@ function compileLaTeXRoutine() {
       WORKROOT +
       "/" +
       self.mainfile.substr(0, self.mainfile.length - 4) +
-      ".xdv";
+      ".pdf";
     try {
       pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
     } catch (err) {
@@ -149,7 +155,7 @@ function compileLaTeXRoutine() {
       WORKROOT +
       "/" +
       self.mainfile.substr(0, self.mainfile.length - 4) +
-      ".xdv";
+      ".pdf";
     try {
       _compileBibLatex();
       pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
@@ -481,7 +487,7 @@ function initRuntime() {
   runtimeInitialized = true;
   if (!Module["noFSInit"] && !FS.initialized) FS.init();
   TTY.init();
-  wasmExports["oa"]();
+  wasmExports["qa"]();
   FS.ignorePermissions = false;
 }
 function preMain() {}
@@ -578,9 +584,9 @@ function getWasmImports() {
 async function createWasm() {
   function receiveInstance(instance, module) {
     wasmExports = instance.exports;
-    wasmMemory = wasmExports["na"];
+    wasmMemory = wasmExports["pa"];
     updateMemoryViews();
-    wasmTable = wasmExports["pa"];
+    wasmTable = wasmExports["ra"];
     removeRunDependency("wasm-instantiate");
     return wasmExports;
   }
@@ -3399,6 +3405,24 @@ var __abort_js = () => abort("");
 var __emscripten_throw_longjmp = () => {
   throw Infinity;
 };
+var INT53_MAX = 9007199254740992;
+var INT53_MIN = -9007199254740992;
+var bigintToI53Checked = (num) =>
+  num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
+function __gmtime_js(time, tmPtr) {
+  time = bigintToI53Checked(time);
+  var date = new Date(time * 1e3);
+  HEAP32[tmPtr >> 2] = date.getUTCSeconds();
+  HEAP32[(tmPtr + 4) >> 2] = date.getUTCMinutes();
+  HEAP32[(tmPtr + 8) >> 2] = date.getUTCHours();
+  HEAP32[(tmPtr + 12) >> 2] = date.getUTCDate();
+  HEAP32[(tmPtr + 16) >> 2] = date.getUTCMonth();
+  HEAP32[(tmPtr + 20) >> 2] = date.getUTCFullYear() - 1900;
+  HEAP32[(tmPtr + 24) >> 2] = date.getUTCDay();
+  var start = Date.UTC(date.getUTCFullYear(), 0, 1, 0, 0, 0, 0);
+  var yday = ((date.getTime() - start) / (1e3 * 60 * 60 * 24)) | 0;
+  HEAP32[(tmPtr + 28) >> 2] = yday;
+}
 var isLeapYear = (year) =>
   year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 var MONTH_DAYS_LEAP_CUMULATIVE = [
@@ -3415,10 +3439,6 @@ var ydayFromDate = (date) => {
   var yday = monthDaysCumulative[date.getMonth()] + date.getDate() - 1;
   return yday;
 };
-var INT53_MAX = 9007199254740992;
-var INT53_MIN = -9007199254740992;
-var bigintToI53Checked = (num) =>
-  num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
 function __localtime_js(time, tmPtr) {
   time = bigintToI53Checked(time);
   var date = new Date(time * 1e3);
@@ -3769,66 +3789,68 @@ FS.staticInit();
 MEMFS.doesNotExistError = new FS.ErrnoError(44);
 MEMFS.doesNotExistError.stack = "<generic error, no stack>";
 var wasmImports = {
-  k: ___assert_fail,
+  f: ___assert_fail,
   p: ___cxa_begin_catch,
   r: ___cxa_end_catch,
   a: ___cxa_find_matching_catch_2,
-  g: ___cxa_find_matching_catch_3,
+  h: ___cxa_find_matching_catch_3,
   u: ___cxa_find_matching_catch_4,
   O: ___cxa_rethrow,
   o: ___cxa_throw,
   R: ___cxa_uncaught_exceptions,
-  c: ___resumeException,
-  ia: ___syscall_chdir,
-  ja: ___syscall_faccessat,
+  d: ___resumeException,
+  ja: ___syscall_chdir,
+  ka: ___syscall_faccessat,
   v: ___syscall_fcntl64,
-  ga: ___syscall_fstat64,
-  ca: ___syscall_getcwd,
+  ha: ___syscall_fstat64,
+  da: ___syscall_getcwd,
   X: ___syscall_getdents64,
-  ha: ___syscall_ioctl,
-  da: ___syscall_lstat64,
-  ea: ___syscall_newfstatat,
+  ia: ___syscall_ioctl,
+  ea: ___syscall_lstat64,
+  fa: ___syscall_newfstatat,
   K: ___syscall_openat,
   U: ___syscall_renameat,
   V: ___syscall_rmdir,
-  fa: ___syscall_stat64,
+  ga: ___syscall_stat64,
   W: ___syscall_unlinkat,
-  ka: __abort_js,
+  la: __abort_js,
   S: __emscripten_throw_longjmp,
-  _: __localtime_js,
+  _: __gmtime_js,
+  $: __localtime_js,
   Y: __mmap_js,
   Z: __munmap_js,
-  la: __tzset_js,
+  ma: __tzset_js,
   L: _emscripten_date_now,
   T: _emscripten_resize_heap,
-  aa: _environ_get,
-  ba: _environ_sizes_get,
+  ba: _environ_get,
+  ca: _environ_sizes_get,
   Q: _exit,
   A: _fd_close,
   J: _fd_read,
-  $: _fd_seek,
+  aa: _fd_seek,
   E: _fd_write,
   G: invoke_diii,
   y: invoke_fi,
   H: invoke_fiii,
   q: invoke_i,
-  e: invoke_ii,
+  c: invoke_ii,
   b: invoke_iii,
-  h: invoke_iiii,
+  i: invoke_iiii,
   N: invoke_iiiifi,
-  j: invoke_iiiii,
+  k: invoke_iiiii,
   m: invoke_iiiiii,
   s: invoke_iiiiiii,
   I: invoke_iiiiiiii,
-  ma: invoke_iiiiiiiiii,
+  oa: invoke_iiiiiiiiii,
   C: invoke_iiiiiiiiiiii,
+  na: invoke_iiiiiiiiiij,
   P: invoke_jii,
   D: invoke_jiiii,
   l: invoke_v,
   n: invoke_vi,
-  d: invoke_vii,
-  f: invoke_viii,
-  i: invoke_viiii,
+  e: invoke_vii,
+  g: invoke_viii,
+  j: invoke_viiii,
   w: invoke_viiiii,
   x: invoke_viiiiii,
   t: invoke_viiiiiii,
@@ -3839,52 +3861,52 @@ var wasmImports = {
 };
 var wasmExports;
 createWasm();
-var ___wasm_call_ctors = () => (___wasm_call_ctors = wasmExports["oa"])();
+var ___wasm_call_ctors = () => (___wasm_call_ctors = wasmExports["qa"])();
 var _malloc = (Module["_malloc"] = (a0) =>
-  (_malloc = Module["_malloc"] = wasmExports["qa"])(a0));
+  (_malloc = Module["_malloc"] = wasmExports["sa"])(a0));
 var _compileLaTeX = (Module["_compileLaTeX"] = () =>
-  (_compileLaTeX = Module["_compileLaTeX"] = wasmExports["ra"])());
+  (_compileLaTeX = Module["_compileLaTeX"] = wasmExports["ta"])());
 var _compileFormat = (Module["_compileFormat"] = () =>
-  (_compileFormat = Module["_compileFormat"] = wasmExports["sa"])());
+  (_compileFormat = Module["_compileFormat"] = wasmExports["ua"])());
 var _compileBibLatex = (Module["_compileBibLatex"] = () =>
-  (_compileBibLatex = Module["_compileBibLatex"] = wasmExports["ta"])());
+  (_compileBibLatex = Module["_compileBibLatex"] = wasmExports["va"])());
 var _setMainEntry = (Module["_setMainEntry"] = (a0) =>
-  (_setMainEntry = Module["_setMainEntry"] = wasmExports["ua"])(a0));
+  (_setMainEntry = Module["_setMainEntry"] = wasmExports["wa"])(a0));
 var _synctex_view = (Module["_synctex_view"] = (a0, a1, a2, a3) =>
-  (_synctex_view = Module["_synctex_view"] = wasmExports["va"])(
+  (_synctex_view = Module["_synctex_view"] = wasmExports["xa"])(
     a0,
     a1,
     a2,
     a3
   ));
 var _synctex_edit = (Module["_synctex_edit"] = (a0, a1, a2, a3) =>
-  (_synctex_edit = Module["_synctex_edit"] = wasmExports["wa"])(
+  (_synctex_edit = Module["_synctex_edit"] = wasmExports["ya"])(
     a0,
     a1,
     a2,
     a3
   ));
 var _main = (Module["_main"] = (a0, a1) =>
-  (_main = Module["_main"] = wasmExports["xa"])(a0, a1));
+  (_main = Module["_main"] = wasmExports["za"])(a0, a1));
 var _emscripten_builtin_memalign = (a0, a1) =>
-  (_emscripten_builtin_memalign = wasmExports["ya"])(a0, a1);
-var _setThrew = (a0, a1) => (_setThrew = wasmExports["za"])(a0, a1);
+  (_emscripten_builtin_memalign = wasmExports["Aa"])(a0, a1);
+var _setThrew = (a0, a1) => (_setThrew = wasmExports["Ba"])(a0, a1);
 var __emscripten_tempret_set = (a0) =>
-  (__emscripten_tempret_set = wasmExports["Aa"])(a0);
+  (__emscripten_tempret_set = wasmExports["Ca"])(a0);
 var __emscripten_stack_restore = (a0) =>
-  (__emscripten_stack_restore = wasmExports["Ba"])(a0);
+  (__emscripten_stack_restore = wasmExports["Da"])(a0);
 var __emscripten_stack_alloc = (a0) =>
-  (__emscripten_stack_alloc = wasmExports["Ca"])(a0);
+  (__emscripten_stack_alloc = wasmExports["Ea"])(a0);
 var _emscripten_stack_get_current = () =>
-  (_emscripten_stack_get_current = wasmExports["Da"])();
+  (_emscripten_stack_get_current = wasmExports["Fa"])();
 var ___cxa_decrement_exception_refcount = (a0) =>
-  (___cxa_decrement_exception_refcount = wasmExports["Ea"])(a0);
+  (___cxa_decrement_exception_refcount = wasmExports["Ga"])(a0);
 var ___cxa_increment_exception_refcount = (a0) =>
-  (___cxa_increment_exception_refcount = wasmExports["Fa"])(a0);
+  (___cxa_increment_exception_refcount = wasmExports["Ha"])(a0);
 var ___cxa_can_catch = (a0, a1, a2) =>
-  (___cxa_can_catch = wasmExports["Ga"])(a0, a1, a2);
+  (___cxa_can_catch = wasmExports["Ia"])(a0, a1, a2);
 var ___cxa_get_exception_ptr = (a0) =>
-  (___cxa_get_exception_ptr = wasmExports["Ha"])(a0);
+  (___cxa_get_exception_ptr = wasmExports["Ja"])(a0);
 function invoke_iii(index, a1, a2) {
   var sp = stackSave();
   try {
@@ -4060,6 +4082,16 @@ function invoke_iiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiiiiiiiij(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
