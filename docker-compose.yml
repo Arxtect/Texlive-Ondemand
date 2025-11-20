@@ -10,8 +10,8 @@ services:
         environment:
             TEXLIVE_ENDPOINT: ${TEXLIVE_ENDPOINT:-https://latex.arxtect.cn/latex4/arxtect_version_20251106/}
         volumes:
-            - ./swiftlatexpdftex.fmt:/app/swiftlatexpdftex.fmt:ro
-            - ./swiftlatexxetex.fmt:/app/swiftlatexxetex.fmt:ro
+            - ./stellarlatexpdftex.fmt:/app/stellarlatexpdftex.fmt:ro
+            - ./stellarlatexxetex.fmt:/app/stellarlatexxetex.fmt:ro
             - ./public:/app/public:ro
             - ./app.py:/app/app.py:ro
         command: python3 wsgi.py

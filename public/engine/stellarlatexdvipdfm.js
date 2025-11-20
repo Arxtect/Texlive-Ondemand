@@ -354,7 +354,7 @@ function abort(what) {
 }
 var wasmBinaryFile;
 function findWasmBinary() {
-  return locateFile("swiftlatexdvipdfm.wasm");
+  return locateFile("stellarlatexdvipdfm.wasm");
 }
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {
