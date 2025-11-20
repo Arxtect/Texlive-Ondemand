@@ -82,9 +82,9 @@ static_base_dir = os.path.realpath(os.path.abspath(os.path.join(os.path.dirname(
 engine_base_dir = os.path.join(static_base_dir, "engine")
 
 ENGINE_TEXLIVE_OVERRIDE_FILES = {
-    "swiftlatexxetex.js",
-    "swiftlatexpdftex.js",
-    "swiftlatexdvipdfm.js",
+    "stellarlatexxetex.js",
+    "stellarlatexpdftex.js",
+    "stellarlatexdvipdfm.js",
 }
 TEXLIVE_ENDPOINT_ENV_VAR = "TEXLIVE_ENDPOINT"
 TEXLIVE_ENDPOINT_PATTERN = re.compile(
@@ -214,7 +214,7 @@ def xetex_fetch_file(fileformat, filename):
         else:
             if filename in lookup_table:
                 url = lookup_table[filename]
-            elif filename == "swiftlatexxetex.fmt" or filename == "xetexfontlist.txt":
+            elif filename == "stellarlatexxetex.fmt" or filename == "xetexfontlist.txt":
                 url = filename
             else:
                 url = pykpathsea_xetex.find_file(filename, fileformat)
@@ -252,7 +252,7 @@ def pdftex_fetch_file(fileformat, filename):
             has_file = sta_cached_entry.exists
             file_data = sta_cached_entry.file_data
         else:
-            if filename == "swiftlatexpdftex.fmt":
+            if filename == "stellarlatexpdftex.fmt":
                 url = filename
             else:
                 url = pykpathsea_pdftex.find_file(filename, fileformat)

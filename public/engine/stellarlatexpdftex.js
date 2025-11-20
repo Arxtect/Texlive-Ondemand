@@ -27,7 +27,7 @@ Module["print"] = function (a) {
     return;
   }
   if (a.startsWith("[WASM ENGINE]")) {
-    console.log(a);
+    console.log("[Compile Engine] " + a);
     return;
   }
   const engineIndex = a.indexOf("[WASM ENGINE]");
@@ -43,7 +43,7 @@ Module["printErr"] = function (a) {
     return;
   }
   if (a.startsWith("[WASM ENGINE]")) {
-    console.log(a);
+    console.log("[Compile Engine] " + a);
     return;
   }
   const engineIndex = a.indexOf("[WASM ENGINE]");
@@ -51,7 +51,7 @@ Module["printErr"] = function (a) {
     a = a.substring(0, engineIndex);
   }
   self.memlog += a + "\n";
-  console.log(a);
+  console.log("[Compile Engine] " + a);
 };
 Module["preRun"] = function () {
   FS.mkdir(TEXCACHEROOT);
@@ -176,13 +176,20 @@ function compileLaTeXRoutine() {
     "/" +
     filename.substring(0, filename.lastIndexOf(".")) +
     ".pdf";
+  let synctexurl =
+    OUTPUTROOT +
+    "/" +
+    filename.substring(0, filename.lastIndexOf(".")) +
+    ".synctex.gz";
   FS.writeFile("/tmp/mainfile.txt", self.mainfile);
   const compileLaTeXFunction = cwrap("compileLaTeX", "number");
   let status = compileLaTeXFunction();
   if (status === 0) {
     let pdfArrayBuffer = null;
+    let synctexArrayBuffer = null;
     try {
       pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
+      synctexArrayBuffer = FS.readFile(synctexurl, { encoding: "binary" });
     } catch (err) {
       console.error("Fetch content failed. " + pdfurl);
       status = -253;
@@ -200,14 +207,17 @@ function compileLaTeXRoutine() {
         status,
         log: self.memlog,
         pdf: pdfArrayBuffer.buffer,
+        synctex: synctexArrayBuffer.buffer,
         cmd: "compile",
       },
       [pdfArrayBuffer.buffer]
     );
   } else {
     let pdfArrayBuffer = null;
+    let synctexArrayBuffer = null;
     try {
       pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
+      synctexArrayBuffer = FS.readFile(synctexurl, { encoding: "binary" });
     } catch (err) {
       console.error("Fetch content failed. " + pdfurl);
       status = -253;
@@ -226,6 +236,7 @@ function compileLaTeXRoutine() {
         status,
         log: self.memlog,
         pdf: pdfArrayBuffer.buffer,
+        synctex: synctexArrayBuffer.buffer,
         cmd: "compile",
       },
       [pdfArrayBuffer.buffer]
@@ -433,11 +444,11 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
   xhr.open("GET", remote_url, false);
   xhr.timeout = 15e4;
   xhr.responseType = "arraybuffer";
-  console.log("Start downloading texlive file " + remote_url);
+  console.log("[Compile Engine] Start downloading texlive file " + remote_url);
   try {
     xhr.send();
   } catch (err) {
-    console.log("TexLive Download Failed " + remote_url);
+    console.log("[Compile Engine] TexLive Download Failed " + remote_url);
     return 0;
   }
   if (xhr.status === 200) {
@@ -448,7 +459,7 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
     texlive200_cache[cacheKey] = savepath;
     return _allocate(intArrayFromString(savepath));
   } else if (xhr.status === 301) {
-    console.log("TexLive File not exists " + remote_url);
+    console.log("[Compile Engine] TexLive File not exists " + remote_url);
     texlive404_cache[cacheKey] = 1;
     return 0;
   }
@@ -474,11 +485,11 @@ function kpse_find_pk_impl(nameptr, dpi) {
   xhr.open("GET", remote_url, false);
   xhr.timeout = 15e4;
   xhr.responseType = "arraybuffer";
-  console.log("Start downloading texlive file " + remote_url);
+  console.log("[Compile Engine] Start downloading texlive file " + remote_url);
   try {
     xhr.send();
   } catch (err) {
-    console.log("TexLive Download Failed " + remote_url);
+    console.log("[Compile Engine] TexLive Download Failed " + remote_url);
     return 0;
   }
   if (xhr.status === 200) {
@@ -489,7 +500,7 @@ function kpse_find_pk_impl(nameptr, dpi) {
     pk200_cache[cacheKey] = savepath;
     return _allocate(intArrayFromString(savepath));
   } else if (xhr.status === 301) {
-    console.log("TexLive File not exists " + remote_url);
+    console.log("[Compile Engine] TexLive File not exists " + remote_url);
     pk404_cache[cacheKey] = 1;
     return 0;
   }
@@ -678,7 +689,7 @@ function abort(what) {
 }
 var wasmBinaryFile;
 function findWasmBinary() {
-  return locateFile("swiftlatexpdftex.wasm");
+  return locateFile("stellarlatexpdftex.wasm");
 }
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {

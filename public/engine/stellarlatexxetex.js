@@ -5,36 +5,88 @@ var ENVIRONMENT_IS_WORKER = false;
 const TEXCACHEROOT = "/tex";
 const TEXPKGCACHEROOT = "/tex/pkg";
 const WORKROOT = "/work";
+const OUTPUTROOT = "/output";
 var Module = {};
 self.memlog = "";
+self.initmem = undefined;
 self.mainfile = "main.tex";
 self.texlive_endpoint =
   "https://latex.arxtect.cn/latex4/arxtect_version_20251104/";
 self.ctan_mirror = "https://mirrors.ustc.edu.cn/CTAN/";
 Module["print"] = function (a) {
+  if (
+    a.includes("Package epstopdf Warning: Shell escape feature is not enabled")
+  ) {
+    return;
+  }
+  if (a.startsWith("[WASM ENGINE]")) {
+    console.log("[Compile Engine] " + a);
+    return;
+  }
+  const engineIndex = a.indexOf("[WASM ENGINE]");
+  if (engineIndex > 0) {
+    a = a.substring(0, engineIndex);
+  }
   self.memlog += a + "\n";
-  console.log(a);
 };
 Module["printErr"] = function (a) {
+  if (
+    a.includes("Package epstopdf Warning: Shell escape feature is not enabled")
+  ) {
+    return;
+  }
+  if (a.startsWith("[WASM ENGINE]")) {
+    console.log("[Compile Engine] " + a);
+    return;
+  }
+  const engineIndex = a.indexOf("[WASM ENGINE]");
+  if (engineIndex > 0) {
+    a = a.substring(0, engineIndex);
+  }
   self.memlog += a + "\n";
-  console.log(a);
+  console.log("[Compile Engine] " + a);
 };
 Module["preRun"] = function () {
   FS.mkdir(TEXCACHEROOT);
   FS.mkdir(TEXPKGCACHEROOT);
   FS.mkdir(WORKROOT);
+  FS.mkdir(OUTPUTROOT);
 };
 function _allocate(content) {
   let res = _malloc(content.length);
   HEAPU8.set(new Uint8Array(content), res);
   return res;
 }
+function dumpHeapMemory() {
+  var src = wasmMemory.buffer;
+  var dst = new Uint8Array(src.byteLength);
+  dst.set(new Uint8Array(src));
+  return dst;
+}
+function restoreHeapMemory() {
+  if (self.initmem) {
+    var dst = new Uint8Array(wasmMemory.buffer);
+    dst.set(self.initmem);
+  }
+}
+function closeFSStreams() {
+  for (var i = 0; i < FS.streams.length; i++) {
+    var stream = FS.streams[i];
+    if (!stream || stream.fd <= 2) {
+      continue;
+    }
+    FS.close(stream);
+  }
+}
 function prepareExecutionContext() {
   self.memlog = "";
+  restoreHeapMemory();
   FS.chdir(WORKROOT);
+  return 0;
 }
 Module["postRun"] = function () {
   self.postMessage({ result: "ok" });
+  self.initmem = dumpHeapMemory();
 };
 function cleanDir(dir) {
   let l = FS.readdir(dir);
@@ -61,13 +113,40 @@ function cleanDir(dir) {
       }
     }
   }
-  if (dir !== WORKROOT) {
+  if (
+    dir !== WORKROOT &&
+    dir !== TEXCACHEROOT &&
+    dir !== TEXPKGCACHEROOT &&
+    dir !== OUTPUTROOT &&
+    dir !== "/tmp"
+  ) {
     try {
       FS.rmdir(dir);
     } catch (err) {
       console.error("Not able to top level " + dir);
     }
   }
+}
+function stopCompiler() {
+  FS.writeFile("/tmp/stop", "");
+  const startTime = Date.now();
+  const checkInterval = setInterval(() => {
+    try {
+      FS.stat("/tmp/stop");
+      if (Date.now() - startTime >= 15e3) {
+        clearInterval(checkInterval);
+        self.postMessage({ result: "failed", cmd: "stopcompiler" });
+      }
+    } catch (e) {
+      clearInterval(checkInterval);
+      self.postMessage({
+        result: "ok",
+        status: -253,
+        log: self.memlog,
+        cmd: "compile",
+      });
+    }
+  }, 100);
 }
 Module["onAbort"] = function () {
   self.memlog += "Engine crashed";
@@ -79,14 +158,91 @@ Module["onAbort"] = function () {
   });
   return;
 };
-function compilePDFRoutine() {
+function compileLaTeXRoutine() {
   prepareExecutionContext();
-  const setMainFunction = cwrap("setMainEntry", "number", ["string"]);
-  setMainFunction(self.mainfile);
-  let status = _compilePDF();
-  let pdfArrayBuffer = null;
+  closeFSStreams();
+  let lastSlash = self.mainfile.lastIndexOf("/");
+  let filename =
+    lastSlash >= 0 ? self.mainfile.substring(lastSlash + 1) : self.mainfile;
   let pdfurl =
-    WORKROOT + "/" + self.mainfile.substr(0, self.mainfile.length - 4) + ".pdf";
+    OUTPUTROOT +
+    "/" +
+    filename.substring(0, filename.lastIndexOf(".")) +
+    ".pdf";
+  let synctexurl =
+    OUTPUTROOT +
+    "/" +
+    filename.substring(0, filename.lastIndexOf(".")) +
+    ".synctex.gz";
+  FS.writeFile("/tmp/mainfile.txt", self.mainfile);
+  const compileLaTeXFunction = cwrap("compileLaTeX", "number");
+  let status = compileLaTeXFunction();
+  if (status === 0) {
+    let pdfArrayBuffer = null;
+    let synctexArrayBuffer = null;
+    try {
+      pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
+      synctexArrayBuffer = FS.readFile(synctexurl, { encoding: "binary" });
+    } catch (err) {
+      console.error("Fetch content failed. " + pdfurl);
+      status = -253;
+      self.postMessage({
+        result: "failed",
+        status,
+        log: self.memlog,
+        cmd: "compile",
+      });
+      return;
+    }
+    self.postMessage(
+      {
+        result: "ok",
+        status,
+        log: self.memlog,
+        pdf: pdfArrayBuffer.buffer,
+        synctex: synctexArrayBuffer.buffer,
+        cmd: "compile",
+      },
+      [pdfArrayBuffer.buffer]
+    );
+  } else {
+    let pdfArrayBuffer = null;
+    let synctexArrayBuffer = null;
+    try {
+      pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
+      synctexArrayBuffer = FS.readFile(synctexurl, { encoding: "binary" });
+    } catch (err) {
+      console.error("Fetch content failed. " + pdfurl);
+      status = -253;
+      self.postMessage({
+        result: "failed",
+        status,
+        log: self.memlog,
+        cmd: "compile",
+      });
+      return;
+    }
+    console.error("Compilation failed, with status code " + status);
+    self.postMessage(
+      {
+        result: "failed",
+        status,
+        log: self.memlog,
+        pdf: pdfArrayBuffer.buffer,
+        synctex: synctexArrayBuffer.buffer,
+        cmd: "compile",
+      },
+      [pdfArrayBuffer.buffer]
+    );
+  }
+}
+function compileFormatRoutine() {
+  prepareExecutionContext();
+  FS.writeFile("/tmp/mainfile.txt", "*xelatex.ini");
+  const compileLaTeXFunction = cwrap("compileLaTeX", "number");
+  let status = compileLaTeXFunction();
+  let pdfArrayBuffer = null;
+  let pdfurl = WORKROOT + "/xelatex.fmt";
   try {
     pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
   } catch (err) {
@@ -112,7 +268,7 @@ function compilePDFRoutine() {
       [pdfArrayBuffer.buffer]
     );
   } else {
-    console.error("Compilation failed, with status code " + status);
+    console.error("Compilation format failed, with status code " + status);
     self.postMessage(
       {
         result: "failed",
@@ -148,6 +304,71 @@ function writeFileRoutine(filename, content) {
     self.postMessage({ result: "failed", cmd: "writefile" });
   }
 }
+function synctexViewRoutine(pdf_path, tex_path, line, column) {
+  const synctexViewFunction = cwrap("synctex_view", "string", [
+    "string",
+    "string",
+    "number",
+    "number",
+  ]);
+  try {
+    let res = synctexViewFunction(pdf_path, tex_path, line, column);
+    if (res) {
+      let parts = res.split("");
+      if (parts.length === 7) {
+        self.postMessage({
+          result: "ok",
+          page: parseInt(parts[0]),
+          x: parseFloat(parts[1]),
+          y: parseFloat(parts[2]),
+          h: parseFloat(parts[3]),
+          v: parseFloat(parts[4]),
+          W: parseFloat(parts[5]),
+          H: parseFloat(parts[6]),
+          cmd: "synctex_view",
+        });
+        return;
+      }
+    }
+    self.postMessage({ result: "failed", cmd: "synctex_view" });
+    return;
+  } catch (err) {
+    console.error("Unable to run synctex view");
+    self.postMessage({ result: "failed", cmd: "synctex_view" });
+  }
+}
+function synctexEditRoutine(pdf_path, page, x, y) {
+  const synctexEditFunction = cwrap("synctex_edit", "string", [
+    "string",
+    "number",
+    "number",
+    "number",
+  ]);
+  try {
+    let res = synctexEditFunction(pdf_path, page, x, y);
+    if (res) {
+      let parts = res.split("");
+      if (parts.length === 3) {
+        let file = parts[0];
+        let line = parseInt(parts[1]);
+        let column = parseInt(parts[2]);
+        self.postMessage({
+          result: "ok",
+          file,
+          line,
+          column,
+          cmd: "synctex_edit",
+        });
+        return;
+      }
+    }
+    self.postMessage({ result: "failed", cmd: "synctex_edit" });
+    return;
+  } catch (err) {
+    console.error("Unable to run synctex edit");
+    self.postMessage({ result: "failed", cmd: "synctex_edit" });
+  }
+}
 function setTexliveEndpoint(url) {
   if (url) {
     if (!url.endsWith("/")) {
@@ -159,8 +380,10 @@ function setTexliveEndpoint(url) {
 self["onmessage"] = function (ev) {
   let data = ev["data"];
   let cmd = data["cmd"];
-  if (cmd === "compilepdf") {
-    compilePDFRoutine();
+  if (cmd === "compilelatex") {
+    compileLaTeXRoutine();
+  } else if (cmd === "compileformat") {
+    compileFormatRoutine();
   } else if (cmd === "settexliveurl") {
     setTexliveEndpoint(data["url"]);
   } else if (cmd === "mkdir") {
@@ -172,8 +395,24 @@ self["onmessage"] = function (ev) {
   } else if (cmd === "grace") {
     console.error("Gracefully Close");
     self.close();
-  } else if (cmd === "flushcache") {
+  } else if (cmd === "flushwork") {
     cleanDir(WORKROOT);
+  } else if (cmd === "flushbuild") {
+    cleanDir(OUTPUTROOT);
+    cleanDir("/tmp");
+  } else if (cmd == "stopcompiler") {
+    stopCompiler();
+  } else if (cmd == "predownload") {
+    self.postMessage({ result: "failed", cmd: "predownload" });
+  } else if (cmd == "synctex_view") {
+    synctexViewRoutine(
+      data["pdf_path"],
+      data["tex_path"],
+      data["line"],
+      data["column"]
+    );
+  } else if (cmd == "synctex_edit") {
+    synctexEditRoutine(data["pdf_path"], data["page"], data["x"], data["y"]);
   } else {
     console.error("Unknown command " + cmd);
   }
@@ -181,10 +420,7 @@ self["onmessage"] = function (ev) {
 let texlive404_cache = {};
 let texlive200_cache = {};
 function kpse_find_file_impl(nameptr, format, _mustexist) {
-  let reqname = UTF8ToString(nameptr);
-  if (reqname.startsWith("/tex/")) {
-    reqname = reqname.substr(5);
-  }
+  const reqname = UTF8ToString(nameptr);
   if (reqname.includes("/")) {
     return 0;
   }
@@ -201,11 +437,11 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
   xhr.open("GET", remote_url, false);
   xhr.timeout = 15e4;
   xhr.responseType = "arraybuffer";
-  console.log("Start downloading texlive file " + remote_url);
+  console.log("[Compile Engine] Start downloading texlive file " + remote_url);
   try {
     xhr.send();
   } catch (err) {
-    console.log("TexLive Download Failed " + remote_url);
+    console.log("[Compile Engine] TexLive Download Failed " + remote_url);
     return 0;
   }
   if (xhr.status === 200) {
@@ -216,7 +452,7 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
     texlive200_cache[cacheKey] = savepath;
     return _allocate(intArrayFromString(savepath));
   } else if (xhr.status === 301) {
-    console.log("TexLive File not exists " + remote_url);
+    console.log("[Compile Engine] TexLive File not exists " + remote_url);
     texlive404_cache[cacheKey] = 1;
     return 0;
   }
@@ -309,7 +545,7 @@ function initRuntime() {
   runtimeInitialized = true;
   if (!Module["noFSInit"] && !FS.initialized) FS.init();
   TTY.init();
-  wasmExports["F"]();
+  wasmExports["qa"]();
   FS.ignorePermissions = false;
 }
 function preMain() {}
@@ -354,7 +590,7 @@ function abort(what) {
 }
 var wasmBinaryFile;
 function findWasmBinary() {
-  return locateFile("swiftlatexdvipdfm.wasm");
+  return locateFile("stellarlatexxetex.wasm");
 }
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {
@@ -406,9 +642,9 @@ function getWasmImports() {
 async function createWasm() {
   function receiveInstance(instance, module) {
     wasmExports = instance.exports;
-    wasmMemory = wasmExports["E"];
+    wasmMemory = wasmExports["pa"];
     updateMemoryViews();
-    wasmTable = wasmExports["G"];
+    wasmTable = wasmExports["ra"];
     removeRunDependency("wasm-instantiate");
     return wasmExports;
   }
@@ -497,12 +733,129 @@ var ___assert_fail = (condition, filename, line, func) =>
         func ? UTF8ToString(func) : "unknown function",
       ]
   );
-var syscallGetVarargI = () => {
-  var ret = HEAP32[+SYSCALLS.varargs >> 2];
-  SYSCALLS.varargs += 4;
-  return ret;
+var exceptionCaught = [];
+var uncaughtExceptionCount = 0;
+var ___cxa_begin_catch = (ptr) => {
+  var info = new ExceptionInfo(ptr);
+  if (!info.get_caught()) {
+    info.set_caught(true);
+    uncaughtExceptionCount--;
+  }
+  info.set_rethrown(false);
+  exceptionCaught.push(info);
+  ___cxa_increment_exception_refcount(ptr);
+  return ___cxa_get_exception_ptr(ptr);
 };
-var syscallGetVarargP = syscallGetVarargI;
+var exceptionLast = 0;
+var ___cxa_end_catch = () => {
+  _setThrew(0, 0);
+  var info = exceptionCaught.pop();
+  ___cxa_decrement_exception_refcount(info.excPtr);
+  exceptionLast = 0;
+};
+class ExceptionInfo {
+  constructor(excPtr) {
+    this.excPtr = excPtr;
+    this.ptr = excPtr - 24;
+  }
+  set_type(type) {
+    HEAPU32[(this.ptr + 4) >> 2] = type;
+  }
+  get_type() {
+    return HEAPU32[(this.ptr + 4) >> 2];
+  }
+  set_destructor(destructor) {
+    HEAPU32[(this.ptr + 8) >> 2] = destructor;
+  }
+  get_destructor() {
+    return HEAPU32[(this.ptr + 8) >> 2];
+  }
+  set_caught(caught) {
+    caught = caught ? 1 : 0;
+    HEAP8[this.ptr + 12] = caught;
+  }
+  get_caught() {
+    return HEAP8[this.ptr + 12] != 0;
+  }
+  set_rethrown(rethrown) {
+    rethrown = rethrown ? 1 : 0;
+    HEAP8[this.ptr + 13] = rethrown;
+  }
+  get_rethrown() {
+    return HEAP8[this.ptr + 13] != 0;
+  }
+  init(type, destructor) {
+    this.set_adjusted_ptr(0);
+    this.set_type(type);
+    this.set_destructor(destructor);
+  }
+  set_adjusted_ptr(adjustedPtr) {
+    HEAPU32[(this.ptr + 16) >> 2] = adjustedPtr;
+  }
+  get_adjusted_ptr() {
+    return HEAPU32[(this.ptr + 16) >> 2];
+  }
+}
+var ___resumeException = (ptr) => {
+  if (!exceptionLast) {
+    exceptionLast = ptr;
+  }
+  throw exceptionLast;
+};
+var setTempRet0 = (val) => __emscripten_tempret_set(val);
+var findMatchingCatch = (args) => {
+  var thrown = exceptionLast;
+  if (!thrown) {
+    setTempRet0(0);
+    return 0;
+  }
+  var info = new ExceptionInfo(thrown);
+  info.set_adjusted_ptr(thrown);
+  var thrownType = info.get_type();
+  if (!thrownType) {
+    setTempRet0(0);
+    return thrown;
+  }
+  for (var caughtType of args) {
+    if (caughtType === 0 || caughtType === thrownType) {
+      break;
+    }
+    var adjusted_ptr_addr = info.ptr + 16;
+    if (___cxa_can_catch(caughtType, thrownType, adjusted_ptr_addr)) {
+      setTempRet0(caughtType);
+      return thrown;
+    }
+  }
+  setTempRet0(thrownType);
+  return thrown;
+};
+var ___cxa_find_matching_catch_2 = () => findMatchingCatch([]);
+var ___cxa_find_matching_catch_3 = (arg0) => findMatchingCatch([arg0]);
+var ___cxa_find_matching_catch_4 = (arg0, arg1) =>
+  findMatchingCatch([arg0, arg1]);
+var ___cxa_rethrow = () => {
+  var info = exceptionCaught.pop();
+  if (!info) {
+    abort("no exception to throw");
+  }
+  var ptr = info.excPtr;
+  if (!info.get_rethrown()) {
+    exceptionCaught.push(info);
+    info.set_rethrown(true);
+    info.set_caught(false);
+    uncaughtExceptionCount++;
+  }
+  exceptionLast = ptr;
+  throw exceptionLast;
+};
+var ___cxa_throw = (ptr, type, destructor) => {
+  var info = new ExceptionInfo(ptr);
+  info.init(type, destructor);
+  exceptionLast = ptr;
+  uncaughtExceptionCount++;
+  throw exceptionLast;
+};
+var ___cxa_uncaught_exceptions = () => uncaughtExceptionCount;
 var PATH = {
   isAbs: (path) => path.charAt(0) === "/",
   splitPath: (filename) => {
@@ -812,9 +1165,15 @@ var TTY = {
     },
   },
 };
+var zeroMemory = (address, size) => {
+  HEAPU8.fill(0, address, address + size);
+};
 var alignMemory = (size, alignment) => Math.ceil(size / alignment) * alignment;
 var mmapAlloc = (size) => {
-  abort();
+  size = alignMemory(size, 65536);
+  var ptr = _emscripten_builtin_memalign(65536, size);
+  if (ptr) zeroMemory(ptr, size);
+  return ptr;
 };
 var MEMFS = {
   ops_table: null,
@@ -2759,6 +3118,47 @@ var SYSCALLS = {
     return ret;
   },
 };
+function ___syscall_chdir(path) {
+  try {
+    path = SYSCALLS.getStr(path);
+    FS.chdir(path);
+    return 0;
+  } catch (e) {
+    if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
+function ___syscall_faccessat(dirfd, path, amode, flags) {
+  try {
+    path = SYSCALLS.getStr(path);
+    path = SYSCALLS.calculateAt(dirfd, path);
+    if (amode & ~7) {
+      return -28;
+    }
+    var lookup = FS.lookupPath(path, { follow: true });
+    var node = lookup.node;
+    if (!node) {
+      return -44;
+    }
+    var perms = "";
+    if (amode & 4) perms += "r";
+    if (amode & 2) perms += "w";
+    if (amode & 1) perms += "x";
+    if (perms && FS.nodePermissions(node, perms)) {
+      return -2;
+    }
+    return 0;
+  } catch (e) {
+    if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
+var syscallGetVarargI = () => {
+  var ret = HEAP32[+SYSCALLS.varargs >> 2];
+  SYSCALLS.varargs += 4;
+  return ret;
+};
+var syscallGetVarargP = syscallGetVarargI;
 function ___syscall_fcntl64(fd, cmd, varargs) {
   SYSCALLS.varargs = varargs;
   try {
@@ -3081,6 +3481,70 @@ function __gmtime_js(time, tmPtr) {
   var yday = ((date.getTime() - start) / (1e3 * 60 * 60 * 24)) | 0;
   HEAP32[(tmPtr + 28) >> 2] = yday;
 }
+var isLeapYear = (year) =>
+  year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+var MONTH_DAYS_LEAP_CUMULATIVE = [
+  0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335,
+];
+var MONTH_DAYS_REGULAR_CUMULATIVE = [
+  0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334,
+];
+var ydayFromDate = (date) => {
+  var leap = isLeapYear(date.getFullYear());
+  var monthDaysCumulative = leap
+    ? MONTH_DAYS_LEAP_CUMULATIVE
+    : MONTH_DAYS_REGULAR_CUMULATIVE;
+  var yday = monthDaysCumulative[date.getMonth()] + date.getDate() - 1;
+  return yday;
+};
+function __localtime_js(time, tmPtr) {
+  time = bigintToI53Checked(time);
+  var date = new Date(time * 1e3);
+  HEAP32[tmPtr >> 2] = date.getSeconds();
+  HEAP32[(tmPtr + 4) >> 2] = date.getMinutes();
+  HEAP32[(tmPtr + 8) >> 2] = date.getHours();
+  HEAP32[(tmPtr + 12) >> 2] = date.getDate();
+  HEAP32[(tmPtr + 16) >> 2] = date.getMonth();
+  HEAP32[(tmPtr + 20) >> 2] = date.getFullYear() - 1900;
+  HEAP32[(tmPtr + 24) >> 2] = date.getDay();
+  var yday = ydayFromDate(date) | 0;
+  HEAP32[(tmPtr + 28) >> 2] = yday;
+  HEAP32[(tmPtr + 36) >> 2] = -(date.getTimezoneOffset() * 60);
+  var start = new Date(date.getFullYear(), 0, 1);
+  var summerOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+  var winterOffset = start.getTimezoneOffset();
+  var dst =
+    (summerOffset != winterOffset &&
+      date.getTimezoneOffset() == Math.min(winterOffset, summerOffset)) | 0;
+  HEAP32[(tmPtr + 32) >> 2] = dst;
+}
+function __mmap_js(len, prot, flags, fd, offset, allocated, addr) {
+  offset = bigintToI53Checked(offset);
+  try {
+    if (isNaN(offset)) return 61;
+    var stream = SYSCALLS.getStreamFromFD(fd);
+    var res = FS.mmap(stream, len, offset, prot, flags);
+    var ptr = res.ptr;
+    HEAP32[allocated >> 2] = res.allocated;
+    HEAPU32[addr >> 2] = ptr;
+    return 0;
+  } catch (e) {
+    if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
+function __munmap_js(addr, len, prot, flags, fd, offset) {
+  offset = bigintToI53Checked(offset);
+  try {
+    var stream = SYSCALLS.getStreamFromFD(fd);
+    if (prot & 2) {
+      SYSCALLS.doMsync(addr, stream, len, flags, offset);
+    }
+  } catch (e) {
+    if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
 var __tzset_js = (timezone, daylight, std_name, dst_name) => {
   var currentYear = new Date().getFullYear();
   var winter = new Date(currentYear, 0, 1);
@@ -3290,14 +3754,25 @@ function _fd_write(fd, iov, iovcnt, pnum) {
     return e.errno;
   }
 }
-function _kpse_find_file_js(nameptr, format) {
-  return kpse_find_file_impl(nameptr, format);
+function _kpse_find_file_js(nameptr, format, mustexist) {
+  return kpse_find_file_impl(nameptr, format, mustexist);
+}
+var _llvm_eh_typeid_for = (type) => type;
+function _prepareExecutionContext_js() {
+  return prepareExecutionContext();
 }
 var handleException = (e) => {
   if (e instanceof ExitStatus || e == "unwind") {
     return EXITSTATUS;
   }
   quit_(1, e);
+};
+var stackAlloc = (sz) => __emscripten_stack_alloc(sz);
+var stringToUTF8OnStack = (str) => {
+  var size = lengthBytesUTF8(str) + 1;
+  var ret = stackAlloc(size);
+  stringToUTF8(str, ret, size);
+  return ret;
 };
 var wasmTableMirror = [];
 var wasmTable;
@@ -3315,13 +3790,6 @@ var getCFunc = (ident) => {
 };
 var writeArrayToMemory = (array, buffer) => {
   HEAP8.set(array, buffer);
-};
-var stackAlloc = (sz) => __emscripten_stack_alloc(sz);
-var stringToUTF8OnStack = (str) => {
-  var size = lengthBytesUTF8(str) + 1;
-  var ret = stackAlloc(size);
-  stringToUTF8(str, ret, size);
-  return ret;
 };
 var ccall = (ident, returnType, argTypes, args, opts) => {
   var toC = {
@@ -3382,55 +3850,118 @@ FS.staticInit();
 MEMFS.doesNotExistError = new FS.ErrnoError(44);
 MEMFS.doesNotExistError.stack = "<generic error, no stack>";
 var wasmImports = {
-  a: ___assert_fail,
-  b: ___syscall_fcntl64,
-  B: ___syscall_fstat64,
-  m: ___syscall_getcwd,
-  s: ___syscall_getdents64,
-  C: ___syscall_ioctl,
-  y: ___syscall_lstat64,
-  z: ___syscall_newfstatat,
-  g: ___syscall_openat,
-  p: ___syscall_renameat,
-  q: ___syscall_rmdir,
-  A: ___syscall_stat64,
-  r: ___syscall_unlinkat,
-  j: __abort_js,
-  n: __emscripten_throw_longjmp,
-  t: __gmtime_js,
-  u: __tzset_js,
-  i: _emscripten_date_now,
-  o: _emscripten_resize_heap,
-  w: _environ_get,
-  x: _environ_sizes_get,
-  l: _exit,
-  c: _fd_close,
-  f: _fd_read,
-  v: _fd_seek,
-  d: _fd_write,
-  h: invoke_iii,
-  D: invoke_iiiiiiiiiij,
-  k: invoke_vii,
-  e: _kpse_find_file_js,
+  f: ___assert_fail,
+  p: ___cxa_begin_catch,
+  r: ___cxa_end_catch,
+  a: ___cxa_find_matching_catch_2,
+  h: ___cxa_find_matching_catch_3,
+  u: ___cxa_find_matching_catch_4,
+  P: ___cxa_rethrow,
+  o: ___cxa_throw,
+  Q: ___cxa_uncaught_exceptions,
+  d: ___resumeException,
+  ia: ___syscall_chdir,
+  ja: ___syscall_faccessat,
+  w: ___syscall_fcntl64,
+  ga: ___syscall_fstat64,
+  ca: ___syscall_getcwd,
+  W: ___syscall_getdents64,
+  ha: ___syscall_ioctl,
+  da: ___syscall_lstat64,
+  ea: ___syscall_newfstatat,
+  K: ___syscall_openat,
+  T: ___syscall_renameat,
+  U: ___syscall_rmdir,
+  fa: ___syscall_stat64,
+  V: ___syscall_unlinkat,
+  ka: __abort_js,
+  R: __emscripten_throw_longjmp,
+  Z: __gmtime_js,
+  _: __localtime_js,
+  X: __mmap_js,
+  Y: __munmap_js,
+  la: __tzset_js,
+  L: _emscripten_date_now,
+  S: _emscripten_resize_heap,
+  aa: _environ_get,
+  ba: _environ_sizes_get,
+  O: _exit,
+  A: _fd_close,
+  J: _fd_read,
+  $: _fd_seek,
+  E: _fd_write,
+  G: invoke_diii,
+  y: invoke_fi,
+  H: invoke_fiii,
+  q: invoke_i,
+  c: invoke_ii,
+  b: invoke_iii,
+  i: invoke_iiii,
+  N: invoke_iiiifi,
+  k: invoke_iiiii,
+  n: invoke_iiiiii,
+  s: invoke_iiiiiii,
+  I: invoke_iiiiiiii,
+  na: invoke_iiiiiiiiii,
+  C: invoke_iiiiiiiiiiii,
+  ma: invoke_iiiiiiiiiij,
+  D: invoke_jiiii,
+  l: invoke_v,
+  m: invoke_vi,
+  e: invoke_vii,
+  g: invoke_viii,
+  j: invoke_viiii,
+  x: invoke_viiiii,
+  v: invoke_viiiiii,
+  t: invoke_viiiiiii,
+  z: invoke_viiiiiiiiii,
+  B: invoke_viiiiiiiiiiiiiii,
+  F: _kpse_find_file_js,
+  M: _llvm_eh_typeid_for,
+  oa: _prepareExecutionContext_js,
 };
 var wasmExports;
 createWasm();
-var ___wasm_call_ctors = () => (___wasm_call_ctors = wasmExports["F"])();
+var ___wasm_call_ctors = () => (___wasm_call_ctors = wasmExports["qa"])();
 var _malloc = (Module["_malloc"] = (a0) =>
-  (_malloc = Module["_malloc"] = wasmExports["H"])(a0));
-var _compilePDF = (Module["_compilePDF"] = () =>
-  (_compilePDF = Module["_compilePDF"] = wasmExports["I"])());
-var _setMainEntry = (Module["_setMainEntry"] = (a0) =>
-  (_setMainEntry = Module["_setMainEntry"] = wasmExports["J"])(a0));
+  (_malloc = Module["_malloc"] = wasmExports["sa"])(a0));
+var _compileLaTeX = (Module["_compileLaTeX"] = () =>
+  (_compileLaTeX = Module["_compileLaTeX"] = wasmExports["ta"])());
+var _synctex_view = (Module["_synctex_view"] = (a0, a1, a2, a3) =>
+  (_synctex_view = Module["_synctex_view"] = wasmExports["ua"])(
+    a0,
+    a1,
+    a2,
+    a3
+  ));
+var _synctex_edit = (Module["_synctex_edit"] = (a0, a1, a2, a3) =>
+  (_synctex_edit = Module["_synctex_edit"] = wasmExports["va"])(
+    a0,
+    a1,
+    a2,
+    a3
+  ));
 var _main = (Module["_main"] = (a0, a1) =>
-  (_main = Module["_main"] = wasmExports["K"])(a0, a1));
-var _setThrew = (a0, a1) => (_setThrew = wasmExports["L"])(a0, a1);
+  (_main = Module["_main"] = wasmExports["wa"])(a0, a1));
+var _emscripten_builtin_memalign = (a0, a1) =>
+  (_emscripten_builtin_memalign = wasmExports["xa"])(a0, a1);
+var _setThrew = (a0, a1) => (_setThrew = wasmExports["ya"])(a0, a1);
+var __emscripten_tempret_set = (a0) =>
+  (__emscripten_tempret_set = wasmExports["za"])(a0);
 var __emscripten_stack_restore = (a0) =>
-  (__emscripten_stack_restore = wasmExports["M"])(a0);
+  (__emscripten_stack_restore = wasmExports["Aa"])(a0);
 var __emscripten_stack_alloc = (a0) =>
-  (__emscripten_stack_alloc = wasmExports["N"])(a0);
+  (__emscripten_stack_alloc = wasmExports["Ba"])(a0);
 var _emscripten_stack_get_current = () =>
-  (_emscripten_stack_get_current = wasmExports["O"])();
+  (_emscripten_stack_get_current = wasmExports["Ca"])();
+var ___cxa_decrement_exception_refcount = (a0) =>
+  (___cxa_decrement_exception_refcount = wasmExports["Da"])(a0);
+var ___cxa_increment_exception_refcount = (a0) =>
+  (___cxa_increment_exception_refcount = wasmExports["Ea"])(a0);
+var ___cxa_can_catch = (a0, a1, a2) =>
+  (___cxa_can_catch = wasmExports["Fa"])(a0, a1, a2);
+var ___cxa_get_exception_ptr = (a0) =>
+  (___cxa_get_exception_ptr = wasmExports["Ga"])(a0);
 function invoke_iii(index, a1, a2) {
   var sp = stackSave();
   try {
@@ -3441,10 +3972,50 @@ function invoke_iii(index, a1, a2) {
     _setThrew(1, 0);
   }
 }
-function invoke_iiiiiiiiiij(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
+function invoke_iiiiii(index, a1, a2, a3, a4, a5) {
   var sp = stackSave();
   try {
-    return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_ii(index, a1) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiii(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_vi(index, a1) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_v(index) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)();
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -3461,11 +4032,267 @@ function invoke_vii(index, a1, a2) {
     _setThrew(1, 0);
   }
 }
+function invoke_iiii(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_viii(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_viiiiii(index, a1, a2, a3, a4, a5, a6) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_viiii(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiiiii(index, a1, a2, a3, a4, a5, a6) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_i(index) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)();
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_fi(index, a1) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiifi(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_viiiii(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiiiiiiiij(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_jiiii(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+    return 0n;
+  }
+}
+function invoke_fiii(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_diii(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_viiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_iiiiiiiiiiii(
+  index,
+  a1,
+  a2,
+  a3,
+  a4,
+  a5,
+  a6,
+  a7,
+  a8,
+  a9,
+  a10,
+  a11
+) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(
+      a1,
+      a2,
+      a3,
+      a4,
+      a5,
+      a6,
+      a7,
+      a8,
+      a9,
+      a10,
+      a11
+    );
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_viiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+function invoke_viiiiiiiiiiiiiii(
+  index,
+  a1,
+  a2,
+  a3,
+  a4,
+  a5,
+  a6,
+  a7,
+  a8,
+  a9,
+  a10,
+  a11,
+  a12,
+  a13,
+  a14,
+  a15
+) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(
+      a1,
+      a2,
+      a3,
+      a4,
+      a5,
+      a6,
+      a7,
+      a8,
+      a9,
+      a10,
+      a11,
+      a12,
+      a13,
+      a14,
+      a15
+    );
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
 Module["cwrap"] = cwrap;
-function callMain() {
+function callMain(args = []) {
   var entryFunction = _main;
-  var argc = 0;
-  var argv = 0;
+  args.unshift(thisProgram);
+  var argc = args.length;
+  var argv = stackAlloc((argc + 1) * 4);
+  var argv_ptr = argv;
+  args.forEach((arg) => {
+    HEAPU32[argv_ptr >> 2] = stringToUTF8OnStack(arg);
+    argv_ptr += 4;
+  });
+  HEAPU32[argv_ptr >> 2] = 0;
   try {
     var ret = entryFunction(argc, argv);
     exitJS(ret, true);
@@ -3474,7 +4301,7 @@ function callMain() {
     return handleException(e);
   }
 }
-function run() {
+function run(args = arguments_) {
   if (runDependencies > 0) {
     dependenciesFulfilled = run;
     return;
@@ -3491,7 +4318,7 @@ function run() {
     preMain();
     Module["onRuntimeInitialized"]?.();
     var noInitialRun = Module["noInitialRun"];
-    if (!noInitialRun) callMain();
+    if (!noInitialRun) callMain(args);
     postRun();
   }
   if (Module["setStatus"]) {
