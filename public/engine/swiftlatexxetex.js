@@ -5,6 +5,7 @@ var ENVIRONMENT_IS_WORKER = false;
 const TEXCACHEROOT = "/tex";
 const TEXPKGCACHEROOT = "/tex/pkg";
 const WORKROOT = "/work";
+const OUTPUTROOT = "/output";
 var Module = {};
 self.memlog = "";
 self.initmem = undefined;
@@ -18,6 +19,14 @@ Module["print"] = function (a) {
   ) {
     return;
   }
+  if (a.startsWith("[WASM ENGINE]")) {
+    console.log(a);
+    return;
+  }
+  const engineIndex = a.indexOf("[WASM ENGINE]");
+  if (engineIndex > 0) {
+    a = a.substring(0, engineIndex);
+  }
   self.memlog += a + "\n";
 };
 Module["printErr"] = function (a) {
@@ -26,6 +35,14 @@ Module["printErr"] = function (a) {
   ) {
     return;
   }
+  if (a.startsWith("[WASM ENGINE]")) {
+    console.log(a);
+    return;
+  }
+  const engineIndex = a.indexOf("[WASM ENGINE]");
+  if (engineIndex > 0) {
+    a = a.substring(0, engineIndex);
+  }
   self.memlog += a + "\n";
   console.log(a);
 };
@@ -33,6 +50,7 @@ Module["preRun"] = function () {
   FS.mkdir(TEXCACHEROOT);
   FS.mkdir(TEXPKGCACHEROOT);
   FS.mkdir(WORKROOT);
+  FS.mkdir(OUTPUTROOT);
 };
 function _allocate(content) {
   let res = _malloc(content.length);
@@ -63,8 +81,8 @@ function closeFSStreams() {
 function prepareExecutionContext() {
   self.memlog = "";
   restoreHeapMemory();
-  closeFSStreams();
   FS.chdir(WORKROOT);
+  return 0;
 }
 Module["postRun"] = function () {
   self.postMessage({ result: "ok" });
@@ -95,13 +113,40 @@ function cleanDir(dir) {
       }
     }
   }
-  if (dir !== WORKROOT) {
+  if (
+    dir !== WORKROOT &&
+    dir !== TEXCACHEROOT &&
+    dir !== TEXPKGCACHEROOT &&
+    dir !== OUTPUTROOT &&
+    dir !== "/tmp"
+  ) {
     try {
       FS.rmdir(dir);
     } catch (err) {
       console.error("Not able to top level " + dir);
     }
   }
+}
+function stopCompiler() {
+  FS.writeFile("/tmp/stop", "");
+  const startTime = Date.now();
+  const checkInterval = setInterval(() => {
+    try {
+      FS.stat("/tmp/stop");
+      if (Date.now() - startTime >= 15e3) {
+        clearInterval(checkInterval);
+        self.postMessage({ result: "failed", cmd: "stopcompiler" });
+      }
+    } catch (e) {
+      clearInterval(checkInterval);
+      self.postMessage({
+        result: "ok",
+        status: -253,
+        log: self.memlog,
+        cmd: "compile",
+      });
+    }
+  }, 100);
 }
 Module["onAbort"] = function () {
   self.memlog += "Engine crashed";
@@ -115,17 +160,20 @@ Module["onAbort"] = function () {
 };
 function compileLaTeXRoutine() {
   prepareExecutionContext();
-  const setMainFunction = cwrap("setMainEntry", "number", ["string"]);
-  setMainFunction(self.mainfile);
-  let status = _compileLaTeX();
+  closeFSStreams();
+  let lastSlash = self.mainfile.lastIndexOf("/");
+  let filename =
+    lastSlash >= 0 ? self.mainfile.substring(lastSlash + 1) : self.mainfile;
+  let pdfurl =
+    OUTPUTROOT +
+    "/" +
+    filename.substring(0, filename.lastIndexOf(".")) +
+    ".pdf";
+  FS.writeFile("/tmp/mainfile.txt", self.mainfile);
+  const compileLaTeXFunction = cwrap("compileLaTeX", "number");
+  let status = compileLaTeXFunction();
   if (status === 0) {
     let pdfArrayBuffer = null;
-    _compileBibLatex();
-    let pdfurl =
-      WORKROOT +
-      "/" +
-      self.mainfile.substr(0, self.mainfile.length - 4) +
-      ".pdf";
     try {
       pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
     } catch (err) {
@@ -151,13 +199,7 @@ function compileLaTeXRoutine() {
     );
   } else {
     let pdfArrayBuffer = null;
-    let pdfurl =
-      WORKROOT +
-      "/" +
-      self.mainfile.substr(0, self.mainfile.length - 4) +
-      ".pdf";
     try {
-      _compileBibLatex();
       pdfArrayBuffer = FS.readFile(pdfurl, { encoding: "binary" });
     } catch (err) {
       console.error("Fetch content failed. " + pdfurl);
@@ -185,7 +227,9 @@ function compileLaTeXRoutine() {
 }
 function compileFormatRoutine() {
   prepareExecutionContext();
-  let status = _compileFormat();
+  FS.writeFile("/tmp/mainfile.txt", "*xelatex.ini");
+  const compileLaTeXFunction = cwrap("compileLaTeX", "number");
+  let status = compileLaTeXFunction();
   let pdfArrayBuffer = null;
   let pdfurl = WORKROOT + "/xelatex.fmt";
   try {
@@ -340,10 +384,13 @@ self["onmessage"] = function (ev) {
   } else if (cmd === "grace") {
     console.error("Gracefully Close");
     self.close();
-  } else if (cmd === "flushcache") {
+  } else if (cmd === "flushwork") {
     cleanDir(WORKROOT);
+  } else if (cmd === "flushbuild") {
+    cleanDir(OUTPUTROOT);
+    cleanDir("/tmp");
   } else if (cmd == "stopcompiler") {
-    self.postMessage({ result: "failed", cmd: "stopcompiler" });
+    stopCompiler();
   } else if (cmd == "predownload") {
     self.postMessage({ result: "failed", cmd: "predownload" });
   } else if (cmd == "synctex_view") {
@@ -3700,6 +3747,9 @@ function _kpse_find_file_js(nameptr, format, mustexist) {
   return kpse_find_file_impl(nameptr, format, mustexist);
 }
 var _llvm_eh_typeid_for = (type) => type;
+function _prepareExecutionContext_js() {
+  return prepareExecutionContext();
+}
 var handleException = (e) => {
   if (e instanceof ExitStatus || e == "unwind") {
     return EXITSTATUS;
@@ -3795,39 +3845,39 @@ var wasmImports = {
   a: ___cxa_find_matching_catch_2,
   h: ___cxa_find_matching_catch_3,
   u: ___cxa_find_matching_catch_4,
-  O: ___cxa_rethrow,
+  P: ___cxa_rethrow,
   o: ___cxa_throw,
-  R: ___cxa_uncaught_exceptions,
+  Q: ___cxa_uncaught_exceptions,
   d: ___resumeException,
-  ja: ___syscall_chdir,
-  ka: ___syscall_faccessat,
-  v: ___syscall_fcntl64,
-  ha: ___syscall_fstat64,
-  da: ___syscall_getcwd,
-  X: ___syscall_getdents64,
-  ia: ___syscall_ioctl,
-  ea: ___syscall_lstat64,
-  fa: ___syscall_newfstatat,
+  ia: ___syscall_chdir,
+  ja: ___syscall_faccessat,
+  w: ___syscall_fcntl64,
+  ga: ___syscall_fstat64,
+  ca: ___syscall_getcwd,
+  W: ___syscall_getdents64,
+  ha: ___syscall_ioctl,
+  da: ___syscall_lstat64,
+  ea: ___syscall_newfstatat,
   K: ___syscall_openat,
-  U: ___syscall_renameat,
-  V: ___syscall_rmdir,
-  ga: ___syscall_stat64,
-  W: ___syscall_unlinkat,
-  la: __abort_js,
-  S: __emscripten_throw_longjmp,
-  _: __gmtime_js,
-  $: __localtime_js,
-  Y: __mmap_js,
-  Z: __munmap_js,
-  ma: __tzset_js,
+  T: ___syscall_renameat,
+  U: ___syscall_rmdir,
+  fa: ___syscall_stat64,
+  V: ___syscall_unlinkat,
+  ka: __abort_js,
+  R: __emscripten_throw_longjmp,
+  Z: __gmtime_js,
+  _: __localtime_js,
+  X: __mmap_js,
+  Y: __munmap_js,
+  la: __tzset_js,
   L: _emscripten_date_now,
-  T: _emscripten_resize_heap,
-  ba: _environ_get,
-  ca: _environ_sizes_get,
-  Q: _exit,
+  S: _emscripten_resize_heap,
+  aa: _environ_get,
+  ba: _environ_sizes_get,
+  O: _exit,
   A: _fd_close,
   J: _fd_read,
-  aa: _fd_seek,
+  $: _fd_seek,
   E: _fd_write,
   G: invoke_diii,
   y: invoke_fi,
@@ -3838,26 +3888,26 @@ var wasmImports = {
   i: invoke_iiii,
   N: invoke_iiiifi,
   k: invoke_iiiii,
-  m: invoke_iiiiii,
+  n: invoke_iiiiii,
   s: invoke_iiiiiii,
   I: invoke_iiiiiiii,
-  oa: invoke_iiiiiiiiii,
+  na: invoke_iiiiiiiiii,
   C: invoke_iiiiiiiiiiii,
-  na: invoke_iiiiiiiiiij,
-  P: invoke_jii,
+  ma: invoke_iiiiiiiiiij,
   D: invoke_jiiii,
   l: invoke_v,
-  n: invoke_vi,
+  m: invoke_vi,
   e: invoke_vii,
   g: invoke_viii,
   j: invoke_viiii,
-  w: invoke_viiiii,
-  x: invoke_viiiiii,
+  x: invoke_viiiii,
+  v: invoke_viiiiii,
   t: invoke_viiiiiii,
   z: invoke_viiiiiiiiii,
   B: invoke_viiiiiiiiiiiiiii,
   F: _kpse_find_file_js,
   M: _llvm_eh_typeid_for,
+  oa: _prepareExecutionContext_js,
 };
 var wasmExports;
 createWasm();
@@ -3866,47 +3916,41 @@ var _malloc = (Module["_malloc"] = (a0) =>
   (_malloc = Module["_malloc"] = wasmExports["sa"])(a0));
 var _compileLaTeX = (Module["_compileLaTeX"] = () =>
   (_compileLaTeX = Module["_compileLaTeX"] = wasmExports["ta"])());
-var _compileFormat = (Module["_compileFormat"] = () =>
-  (_compileFormat = Module["_compileFormat"] = wasmExports["ua"])());
-var _compileBibLatex = (Module["_compileBibLatex"] = () =>
-  (_compileBibLatex = Module["_compileBibLatex"] = wasmExports["va"])());
-var _setMainEntry = (Module["_setMainEntry"] = (a0) =>
-  (_setMainEntry = Module["_setMainEntry"] = wasmExports["wa"])(a0));
 var _synctex_view = (Module["_synctex_view"] = (a0, a1, a2, a3) =>
-  (_synctex_view = Module["_synctex_view"] = wasmExports["xa"])(
+  (_synctex_view = Module["_synctex_view"] = wasmExports["ua"])(
     a0,
     a1,
     a2,
     a3
   ));
 var _synctex_edit = (Module["_synctex_edit"] = (a0, a1, a2, a3) =>
-  (_synctex_edit = Module["_synctex_edit"] = wasmExports["ya"])(
+  (_synctex_edit = Module["_synctex_edit"] = wasmExports["va"])(
     a0,
     a1,
     a2,
     a3
   ));
 var _main = (Module["_main"] = (a0, a1) =>
-  (_main = Module["_main"] = wasmExports["za"])(a0, a1));
+  (_main = Module["_main"] = wasmExports["wa"])(a0, a1));
 var _emscripten_builtin_memalign = (a0, a1) =>
-  (_emscripten_builtin_memalign = wasmExports["Aa"])(a0, a1);
-var _setThrew = (a0, a1) => (_setThrew = wasmExports["Ba"])(a0, a1);
+  (_emscripten_builtin_memalign = wasmExports["xa"])(a0, a1);
+var _setThrew = (a0, a1) => (_setThrew = wasmExports["ya"])(a0, a1);
 var __emscripten_tempret_set = (a0) =>
-  (__emscripten_tempret_set = wasmExports["Ca"])(a0);
+  (__emscripten_tempret_set = wasmExports["za"])(a0);
 var __emscripten_stack_restore = (a0) =>
-  (__emscripten_stack_restore = wasmExports["Da"])(a0);
+  (__emscripten_stack_restore = wasmExports["Aa"])(a0);
 var __emscripten_stack_alloc = (a0) =>
-  (__emscripten_stack_alloc = wasmExports["Ea"])(a0);
+  (__emscripten_stack_alloc = wasmExports["Ba"])(a0);
 var _emscripten_stack_get_current = () =>
-  (_emscripten_stack_get_current = wasmExports["Fa"])();
+  (_emscripten_stack_get_current = wasmExports["Ca"])();
 var ___cxa_decrement_exception_refcount = (a0) =>
-  (___cxa_decrement_exception_refcount = wasmExports["Ga"])(a0);
+  (___cxa_decrement_exception_refcount = wasmExports["Da"])(a0);
 var ___cxa_increment_exception_refcount = (a0) =>
-  (___cxa_increment_exception_refcount = wasmExports["Ha"])(a0);
+  (___cxa_increment_exception_refcount = wasmExports["Ea"])(a0);
 var ___cxa_can_catch = (a0, a1, a2) =>
-  (___cxa_can_catch = wasmExports["Ia"])(a0, a1, a2);
+  (___cxa_can_catch = wasmExports["Fa"])(a0, a1, a2);
 var ___cxa_get_exception_ptr = (a0) =>
-  (___cxa_get_exception_ptr = wasmExports["Ja"])(a0);
+  (___cxa_get_exception_ptr = wasmExports["Ga"])(a0);
 function invoke_iii(index, a1, a2) {
   var sp = stackSave();
   try {
@@ -4035,17 +4079,6 @@ function invoke_i(index) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
     _setThrew(1, 0);
-  }
-}
-function invoke_jii(index, a1, a2) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)(a1, a2);
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-    return 0n;
   }
 }
 function invoke_fi(index, a1) {
