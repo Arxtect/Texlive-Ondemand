@@ -18,7 +18,7 @@ self.memlog = "";
 self.initmem = undefined;
 self.mainfile = "main.tex";
 self.texlive_endpoint =
-  "https://latex.arxtect.cn/latex4/arxtect_version_20251104/";
+  "https://latex.arxtect.cn/latex5/arxtect_version_20251120/";
 self.ctan_mirror = "https://mirrors.ustc.edu.cn/CTAN/";
 Module["print"] = function (a) {
   if (
@@ -185,6 +185,15 @@ function compileLaTeXRoutine() {
   const compileLaTeXFunction = cwrap("compileLaTeX", "number");
   let status = compileLaTeXFunction();
   if (status === 0) {
+    if (FS.analyzePath("/tmp/no_compile").exists) {
+      FS.unlink("/tmp/no_compile");
+      self.postMessage({
+        result: "ok",
+        status: 0,
+        log: "not compiled",
+        cmd: "compile",
+      });
+    }
     let pdfArrayBuffer = null;
     let synctexArrayBuffer = null;
     try {
@@ -413,13 +422,13 @@ self["onmessage"] = function (ev) {
     self.postMessage({ result: "failed", cmd: "predownload" });
   } else if (cmd == "synctex_view") {
     synctexViewRoutine(
-      data["pdf_path"],
-      data["tex_path"],
+      data["pdfPath"],
+      data["texPath"],
       data["line"],
       data["column"]
     );
   } else if (cmd == "synctex_edit") {
-    synctexEditRoutine(data["pdf_path"], data["page"], data["x"], data["y"]);
+    synctexEditRoutine(data["pdfPath"], data["page"], data["x"], data["y"]);
   } else {
     console.error("Unknown command " + cmd);
   }
@@ -644,7 +653,7 @@ function initRuntime() {
   runtimeInitialized = true;
   if (!Module["noFSInit"] && !FS.initialized) FS.init();
   TTY.init();
-  wasmExports["ma"]();
+  wasmExports["oa"]();
   FS.ignorePermissions = false;
 }
 function preMain() {}
@@ -746,9 +755,9 @@ function getWasmImports() {
 async function createWasm() {
   function receiveInstance(instance, module) {
     wasmExports = instance.exports;
-    wasmMemory = wasmExports["la"];
+    wasmMemory = wasmExports["na"];
     updateMemoryViews();
-    wasmTable = wasmExports["na"];
+    wasmTable = wasmExports["pa"];
     removeRunDependency("wasm-instantiate");
     return wasmExports;
   }
@@ -3506,6 +3515,17 @@ function ___syscall_lstat64(path, buf) {
     return -e.errno;
   }
 }
+function ___syscall_mkdirat(dirfd, path, mode) {
+  try {
+    path = SYSCALLS.getStr(path);
+    path = SYSCALLS.calculateAt(dirfd, path);
+    FS.mkdir(path, mode, 0);
+    return 0;
+  } catch (e) {
+    if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
 function ___syscall_newfstatat(dirfd, path, buf, flags) {
   try {
     path = SYSCALLS.getStr(path);
@@ -3933,112 +3953,114 @@ FS.staticInit();
 MEMFS.doesNotExistError = new FS.ErrnoError(44);
 MEMFS.doesNotExistError.stack = "<generic error, no stack>";
 var wasmImports = {
-  i: ___assert_fail,
+  j: ___assert_fail,
   q: ___cxa_begin_catch,
-  r: ___cxa_end_catch,
+  t: ___cxa_end_catch,
   a: ___cxa_find_matching_catch_2,
-  g: ___cxa_find_matching_catch_3,
-  t: ___cxa_find_matching_catch_4,
+  h: ___cxa_find_matching_catch_3,
+  u: ___cxa_find_matching_catch_4,
   P: ___cxa_rethrow,
-  o: ___cxa_throw,
-  Q: ___cxa_uncaught_exceptions,
+  p: ___cxa_throw,
+  R: ___cxa_uncaught_exceptions,
   e: ___resumeException,
-  fa: ___syscall_chdir,
-  ga: ___syscall_faccessat,
-  w: ___syscall_fcntl64,
-  ea: ___syscall_fstat64,
-  aa: ___syscall_getcwd,
+  ga: ___syscall_chdir,
+  ha: ___syscall_faccessat,
+  x: ___syscall_fcntl64,
+  fa: ___syscall_fstat64,
+  ba: ___syscall_getcwd,
   W: ___syscall_getdents64,
-  ia: ___syscall_ioctl,
-  ba: ___syscall_lstat64,
-  ca: ___syscall_newfstatat,
-  K: ___syscall_openat,
-  T: ___syscall_renameat,
-  U: ___syscall_rmdir,
-  da: ___syscall_stat64,
-  V: ___syscall_unlinkat,
-  ha: __abort_js,
-  R: __emscripten_throw_longjmp,
+  ja: ___syscall_ioctl,
+  ca: ___syscall_lstat64,
+  Z: ___syscall_mkdirat,
+  da: ___syscall_newfstatat,
+  E: ___syscall_openat,
+  U: ___syscall_renameat,
+  V: ___syscall_rmdir,
+  ea: ___syscall_stat64,
+  L: ___syscall_unlinkat,
+  ia: __abort_js,
+  S: __emscripten_throw_longjmp,
   X: __localtime_js,
   Y: __tzset_js,
-  L: _emscripten_date_now,
-  S: _emscripten_resize_heap,
-  _: _environ_get,
-  $: _environ_sizes_get,
-  F: _exit,
-  A: _fd_close,
-  M: _fd_read,
-  Z: _fd_seek,
-  E: _fd_write,
-  H: invoke_diii,
-  y: invoke_fi,
-  I: invoke_fiii,
-  p: invoke_i,
-  d: invoke_ii,
+  M: _emscripten_date_now,
+  T: _emscripten_resize_heap,
+  $: _environ_get,
+  aa: _environ_sizes_get,
+  G: _exit,
+  z: _fd_close,
+  N: _fd_read,
+  _: _fd_seek,
+  F: _fd_write,
+  I: invoke_diii,
+  J: invoke_fiii,
+  o: invoke_i,
+  c: invoke_ii,
   b: invoke_iii,
-  h: invoke_iiii,
+  g: invoke_iiii,
   l: invoke_iiiii,
   n: invoke_iiiiii,
-  u: invoke_iiiiiii,
-  J: invoke_iiiiiiii,
-  ja: invoke_iiiiiiiiii,
-  C: invoke_iiiiiiiiiiii,
-  D: invoke_jiiii,
+  s: invoke_iiiiiii,
+  K: invoke_iiiiiiii,
+  B: invoke_iiiiiiiiiiii,
+  la: invoke_ji,
+  D: invoke_jii,
+  Q: invoke_jiii,
+  C: invoke_jiiii,
   m: invoke_v,
-  j: invoke_vi,
-  c: invoke_vii,
+  i: invoke_vi,
+  d: invoke_vii,
   f: invoke_viii,
   k: invoke_viiii,
-  x: invoke_viiiii,
+  r: invoke_viiiii,
   v: invoke_viiiiii,
-  s: invoke_viiiiiii,
-  z: invoke_viiiiiiiiii,
-  B: invoke_viiiiiiiiiiiiiii,
-  G: _kpse_find_file_js,
-  ka: _kpse_find_pk_js,
-  N: _llvm_eh_typeid_for,
-  O: _prepareExecutionContext_js,
+  w: invoke_viiiiiii,
+  y: invoke_viiiiiiiiii,
+  A: invoke_viiiiiiiiiiiiiii,
+  H: _kpse_find_file_js,
+  ma: _kpse_find_pk_js,
+  O: _llvm_eh_typeid_for,
+  ka: _prepareExecutionContext_js,
 };
 var wasmExports;
 createWasm();
-var ___wasm_call_ctors = () => (___wasm_call_ctors = wasmExports["ma"])();
+var ___wasm_call_ctors = () => (___wasm_call_ctors = wasmExports["oa"])();
 var _malloc = (Module["_malloc"] = (a0) =>
-  (_malloc = Module["_malloc"] = wasmExports["oa"])(a0));
+  (_malloc = Module["_malloc"] = wasmExports["qa"])(a0));
 var _compileLaTeX = (Module["_compileLaTeX"] = () =>
-  (_compileLaTeX = Module["_compileLaTeX"] = wasmExports["pa"])());
+  (_compileLaTeX = Module["_compileLaTeX"] = wasmExports["ra"])());
 var _synctex_view = (Module["_synctex_view"] = (a0, a1, a2, a3) =>
-  (_synctex_view = Module["_synctex_view"] = wasmExports["qa"])(
+  (_synctex_view = Module["_synctex_view"] = wasmExports["sa"])(
     a0,
     a1,
     a2,
     a3
   ));
 var _synctex_edit = (Module["_synctex_edit"] = (a0, a1, a2, a3) =>
-  (_synctex_edit = Module["_synctex_edit"] = wasmExports["ra"])(
+  (_synctex_edit = Module["_synctex_edit"] = wasmExports["ta"])(
     a0,
     a1,
     a2,
     a3
   ));
 var _main = (Module["_main"] = (a0, a1) =>
-  (_main = Module["_main"] = wasmExports["sa"])(a0, a1));
-var _setThrew = (a0, a1) => (_setThrew = wasmExports["ta"])(a0, a1);
+  (_main = Module["_main"] = wasmExports["ua"])(a0, a1));
+var _setThrew = (a0, a1) => (_setThrew = wasmExports["va"])(a0, a1);
 var __emscripten_tempret_set = (a0) =>
-  (__emscripten_tempret_set = wasmExports["ua"])(a0);
+  (__emscripten_tempret_set = wasmExports["wa"])(a0);
 var __emscripten_stack_restore = (a0) =>
-  (__emscripten_stack_restore = wasmExports["va"])(a0);
+  (__emscripten_stack_restore = wasmExports["xa"])(a0);
 var __emscripten_stack_alloc = (a0) =>
-  (__emscripten_stack_alloc = wasmExports["wa"])(a0);
+  (__emscripten_stack_alloc = wasmExports["ya"])(a0);
 var _emscripten_stack_get_current = () =>
-  (_emscripten_stack_get_current = wasmExports["xa"])();
+  (_emscripten_stack_get_current = wasmExports["za"])();
 var ___cxa_decrement_exception_refcount = (a0) =>
-  (___cxa_decrement_exception_refcount = wasmExports["ya"])(a0);
+  (___cxa_decrement_exception_refcount = wasmExports["Aa"])(a0);
 var ___cxa_increment_exception_refcount = (a0) =>
-  (___cxa_increment_exception_refcount = wasmExports["za"])(a0);
+  (___cxa_increment_exception_refcount = wasmExports["Ba"])(a0);
 var ___cxa_can_catch = (a0, a1, a2) =>
-  (___cxa_can_catch = wasmExports["Aa"])(a0, a1, a2);
+  (___cxa_can_catch = wasmExports["Ca"])(a0, a1, a2);
 var ___cxa_get_exception_ptr = (a0) =>
-  (___cxa_get_exception_ptr = wasmExports["Ba"])(a0);
+  (___cxa_get_exception_ptr = wasmExports["Da"])(a0);
 function invoke_iii(index, a1, a2) {
   var sp = stackSave();
   try {
@@ -4159,26 +4181,6 @@ function invoke_iiiiiii(index, a1, a2, a3, a4, a5, a6) {
     _setThrew(1, 0);
   }
 }
-function invoke_i(index) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)();
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-  }
-}
-function invoke_fi(index, a1) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)(a1);
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-  }
-}
 function invoke_viiiii(index, a1, a2, a3, a4, a5) {
   var sp = stackSave();
   try {
@@ -4189,14 +4191,36 @@ function invoke_viiiii(index, a1, a2, a3, a4, a5) {
     _setThrew(1, 0);
   }
 }
-function invoke_iiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+function invoke_i(index) {
   var sp = stackSave();
   try {
-    return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9);
+    return getWasmTableEntry(index)();
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
     _setThrew(1, 0);
+  }
+}
+function invoke_ji(index, a1) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+    return 0n;
+  }
+}
+function invoke_jii(index, a1, a2) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+    return 0n;
   }
 }
 function invoke_iiiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
@@ -4336,6 +4360,17 @@ function invoke_viiiiiiiiiiiiiii(
     stackRestore(sp);
     if (e !== e + 0) throw e;
     _setThrew(1, 0);
+  }
+}
+function invoke_jiii(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+    return 0n;
   }
 }
 Module["cwrap"] = cwrap;
