@@ -68,29 +68,29 @@ static PyObject *py_kpse_find_file(PyObject *self, PyObject *args) {
 
 /* exported methods */
 
-static PyMethodDef pykpathsea_pdftex_methods[] = {
+static PyMethodDef pykpathsea_luatex_methods[] = {
     {"find_file", (PyCFunction)py_kpse_find_file, METH_VARARGS, NULL},
     {"find_pk", (PyCFunction)py_kpse_find_pk, METH_VARARGS, NULL},
     {NULL, NULL}};
 
 static struct PyModuleDef moduledef = {PyModuleDef_HEAD_INIT,
-                                       "pykpathsea_pdftex",
+                                       "pykpathsea_luatex",
                                        NULL,
                                        -1,
-                                       pykpathsea_pdftex_methods,
+                                       pykpathsea_luatex_methods,
                                        NULL,
                                        NULL,
                                        NULL,
                                        NULL};
 
-PyMODINIT_FUNC PyInit_pykpathsea_pdftex(void) {
+PyMODINIT_FUNC PyInit_pykpathsea_luatex(void) {
   PyObject *module = PyModule_Create(&moduledef);
   if (module == NULL)
     return NULL;
 
   kpse = kpathsea_new();
 
-  kpathsea_set_program_name(kpse, "pdflatex", "pdflatex");
+  kpathsea_set_program_name(kpse, "luatex", "luatex");
 
   kpathsea_set_program_enabled(kpse, kpse_pk_format, true,
                                kpse_src_cmdline - 1);
@@ -98,7 +98,7 @@ PyMODINIT_FUNC PyInit_pykpathsea_pdftex(void) {
   kpathsea_set_program_enabled(kpse, kpse_tfm_format, true,
                                kpse_src_cmdline - 1);
 
-  kpathsea_xputenv(kpse, "engine", "pdftex");
+  kpathsea_xputenv(kpse, "engine", "luatex");
 
   kpathsea_init_prog(kpse, uppercasify(kpse->program_name), DPI, NULL, NULL);
 

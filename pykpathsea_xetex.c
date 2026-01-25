@@ -33,11 +33,23 @@
 #include <string.h>
 
 static kpathsea kpse = NULL;
+static unsigned int DPI = 600;
 
-/* Base resolution. (-D, -dpi) */
-static unsigned dpi = 600;
-
-
+static PyObject *py_kpse_find_pk(PyObject *self, PyObject *args) {
+  char *filename;
+  int dpi;
+  char *completefilename;
+  PyObject *returnvalue;
+  if (PyArg_ParseTuple(args, "si", &filename, &dpi)) {
+    kpse_glyph_file_type font_file_ex;
+    completefilename = kpathsea_find_glyph(kpse, filename, dpi, kpse_pk_format, &font_file_ex);
+    returnvalue = Py_BuildValue("s", completefilename);
+    if (completefilename != NULL)
+      free(completefilename);
+    return returnvalue;
+  }
+  return NULL;
+}
 
 static PyObject *py_kpse_find_file(PyObject *self, PyObject *args) {
   char *filename;
@@ -58,6 +70,7 @@ static PyObject *py_kpse_find_file(PyObject *self, PyObject *args) {
 
 static PyMethodDef pykpathsea_xetex_methods[] = {
     {"find_file", (PyCFunction)py_kpse_find_file, METH_VARARGS, NULL},
+    {"find_pk", (PyCFunction)py_kpse_find_pk, METH_VARARGS, NULL},
     {NULL, NULL}};
 
 static struct PyModuleDef moduledef = {PyModuleDef_HEAD_INIT,
@@ -71,7 +84,6 @@ static struct PyModuleDef moduledef = {PyModuleDef_HEAD_INIT,
                                        NULL};
 
 PyMODINIT_FUNC PyInit_pykpathsea_xetex(void) {
-
   PyObject *module = PyModule_Create(&moduledef);
   if (module == NULL)
     return NULL;
@@ -88,7 +100,7 @@ PyMODINIT_FUNC PyInit_pykpathsea_xetex(void) {
 
   kpathsea_xputenv(kpse, "engine", "xetex");
 
-  kpathsea_init_prog(kpse, uppercasify(kpse->program_name), dpi, NULL, NULL);
+  kpathsea_init_prog(kpse, uppercasify(kpse->program_name), DPI, NULL, NULL);
 
   return module;
 }
