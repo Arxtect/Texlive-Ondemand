@@ -8,7 +8,7 @@ services:
         ports:
             - 5001:5001
         environment:
-            TEXLIVE_ENDPOINT: ${TEXLIVE_ENDPOINT:-https://latex.arxtect.cn/latex4/arxtect_version_20260123/}
+            TEXLIVE_ENDPOINT: ${TEXLIVE_ENDPOINT:-https://latex.arxtect.cn/latex7/arxtect_version_20251120/}
         volumes:
             - ./stellarlatexpdftex.fmt:/app/stellarlatexpdftex.fmt:ro
             - ./stellarlatexxetex.fmt:/app/stellarlatexxetex.fmt:ro

@@ -6,7 +6,7 @@ FROM ubuntu:24.04
 # then Copy application code
 COPY . /app
 
-RUN mv /app/myfont /usr/local/share/fonts && rm -rf /app/.git && \
+RUN mv /app/myfont /usr/local/share/fonts && rm -rf /app/.git /app/.github || true && \
     sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list || true && \
     sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources || true && \
     apt-get update && apt list 'fonts-*' | grep 'fonts-' | grep -v fonts-ubuntu-classic | cut -d/ -f1 | tr '\n' ' ' > /tmp/font_packages.txt && \
@@ -24,11 +24,12 @@ RUN mv /app/myfont /usr/local/share/fonts && rm -rf /app/.git && \
     ln -s /usr/local/texlive/2025/ /etc/texmf/web2c && \
     ln -s /usr/local/texlive/2025 /usr/share/texlive && \
     cp /usr/local/texlive/2025/texmf-var/fonts/conf/texlive-fontconfig.conf /etc/fonts/conf.d/09-texlive.conf && \
-    mkdir -p /var/lib/texlive/repo/simple && mv /usr/local/share/fonts/process_tlpdb.py /var/lib/texlive/repo/simple/ && \
+    mkdir -p /var/lib/texlive/repo/simple && mv /app/script/process_tlpdb.py /var/lib/texlive/repo/simple/ && \
     cd /var/lib/texlive/repo/simple && python3 process_tlpdb.py -d ../tlpkg/texlive.tlpdb texlive.simple.tlpdb ../archive && \
     cat /var/lib/texlive/repo/simple/texlive.simple.tlpdb | xz > /app/tlpkg.txt && \
     cat /usr/local/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map | xz > /app/pdftex.map && \
     cat /tmp/vf.txt | xz > /app/vfpkg.txt && \
+    cat /usr/local/texlive/2025/texmf-dist/tex/generic/unicode-data/UnicodeData.txt | xz > /app/UnicodeData.txt && \
     rm -rf /var/lib/texlive/repo/archive /var/lib/texlive/repo/tlpkg /var/lib/texlive/repo/install* /var/lib/texlive/repo/update* /var/lib/texlive/repo/README.md /var/lib/texlive/repo/TEXLIVE_* && \
     fc-cache -fsv
 

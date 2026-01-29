@@ -178,6 +178,7 @@ def xetex_fetch_file(fileformat, filename):
                 or filename == "tlpkg.txt"
                 or filename == "vfpkg.txt"
                 or filename == "pdftex.map"
+                or filename == "UnicodeData.txt"
             ):
                 url = filename
             elif fileformat == 99:
@@ -275,6 +276,7 @@ def pdftex_fetch_file(fileformat, filename):
                 or filename == "tlpkg.txt"
                 or filename == "vfpkg.txt"
                 or filename == "pdftex.map"
+                or filename == "UnicodeData.txt"
             ):
                 url = filename
             elif fileformat == 99:
@@ -372,6 +374,7 @@ def luatex_fetch_file(fileformat, filename):
                 or filename == "tlpkg.txt"
                 or filename == "vfpkg.txt"
                 or filename == "pdftex.map"
+                or filename == "UnicodeData.txt"
             ):
                 url = filename
             elif fileformat == 99:
