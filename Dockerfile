@@ -21,17 +21,17 @@ RUN mv /app/myfont /usr/local/share/fonts && rm -rf /app/.git /app/.github || tr
     cd /tmp && tar xf /var/lib/texlive/repo/install-tl-unx.tar.gz && cd install* && \
     echo "I" | ./install-tl -repository /var/lib/texlive/repo && \
     cd / && rm -r /tmp/install* && mkdir -p /etc/texmf && \
-    ln -s /usr/local/texlive/2025/ /etc/texmf/web2c && \
-    ln -s /usr/local/texlive/2025 /usr/share/texlive && \
-    cp /usr/local/texlive/2025/texmf-var/fonts/conf/texlive-fontconfig.conf /etc/fonts/conf.d/09-texlive.conf && \
+    ln -s /usr/local/texlive/2026/ /etc/texmf/web2c && \
+    ln -s /usr/local/texlive/2026 /usr/share/texlive && \
+    cp /usr/local/texlive/2026/texmf-var/fonts/conf/texlive-fontconfig.conf /etc/fonts/conf.d/09-texlive.conf && \
     mkdir -p /var/lib/texlive/repo/simple && mv /app/script/process_tlpdb.py /var/lib/texlive/repo/simple/ && \
     cd /var/lib/texlive/repo/simple && python3 process_tlpdb.py -d ../tlpkg/texlive.tlpdb texlive.simple.tlpdb ../archive && \
     cat /var/lib/texlive/repo/simple/texlive.simple.tlpdb | xz > /app/tlpkg.txt && \
-    cat /usr/local/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map | xz > /app/pdftex.map && \
+    cat /usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map | xz > /app/pdftex.map && \
     cat /tmp/vf.txt | xz > /app/vfpkg.txt && \
-    cat /usr/local/texlive/2025/texmf-dist/tex/generic/unicode-data/UnicodeData.txt | xz > /app/UnicodeData.txt && \
+    cat /usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/UnicodeData.txt | xz > /app/UnicodeData.txt && \
     rm -rf /var/lib/texlive/repo/archive /var/lib/texlive/repo/tlpkg /var/lib/texlive/repo/install* /var/lib/texlive/repo/update* /var/lib/texlive/repo/README.md /var/lib/texlive/repo/TEXLIVE_* && \
     fc-cache -fsv
 
 WORKDIR /app
-ENV PATH=/usr/local/texlive/2025/bin/x86_64-linux:$PATH
+ENV PATH=/usr/local/texlive/2026/bin/x86_64-linux:$PATH
